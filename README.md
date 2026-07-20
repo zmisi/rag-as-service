@@ -1,2 +1,3 @@
-# plum-blossom
-The first flower to bloom in the new year!
+# rag-as-service
+
+RAG as a Service.
