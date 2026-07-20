@@ -2,6 +2,14 @@
 
 > Email 登录/登出；主站与租户站（含 `/admin`）共用 `Domain=.lxzxai.com` 会话。
 
+
+| 字段 | 值 |
+|------|-----|
+| **Status** | `review` |
+| **Owner** | |
+| **Approved by** | |
+| **Approved at** | |
+
 ## 范围
 
 - Email + 密码登录（主站 `lxzxai.com`）

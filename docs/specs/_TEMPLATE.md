@@ -2,6 +2,15 @@
 
 > 一句话：这个 Feature 交付什么。
 
+| 字段 | 值 |
+|------|-----|
+| **Status** | `draft` |
+| **Owner** | |
+| **Approved by** | |
+| **Approved at** | |
+
+> Status：`draft` → `review` → `approved` → `done`。未 `approved` 不得实现，见 [00-constraints.md](00-constraints.md) §8。
+
 ## 范围
 
 - …

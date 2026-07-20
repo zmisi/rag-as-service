@@ -2,6 +2,14 @@
 
 > `{slug}.lxzxai.com/admin`：上传与管理文档；状态 draft → saved → verified → published；tag、版本、多文件类型。
 
+
+| 字段 | 值 |
+|------|-----|
+| **Status** | `review` |
+| **Owner** | |
+| **Approved by** | |
+| **Approved at** | |
+
 ## 范围
 
 - Admin 文档 CRUD（本租户）

@@ -77,8 +77,26 @@
 - `{slug}.lxzxai.com/api` 对外整合网关
 - 跨租户共享知识库
 
-## 8. 验收
+## 8. Feature 状态（实现门禁）
+
+每个 Feature Spec 必须标注状态，取值仅限：
+
+| 状态 | 含义 |
+|------|------|
+| `draft` | 起草中 |
+| `review` | 提请 team review |
+| `approved` | 已批准，允许实现 |
+| `done` | Test Cases 全部通过 |
+
+硬规则：
+
+1. **未 `approved`（及未到 `done`）的 Feature 不得进入实现与验收编码。**
+2. `draft` / `review` 仅允许改 Spec；发现实现中的代码针对未批准 Feature，视为违规。
+3. `approved` → 实现 → Test Cases 全过 → 改为 `done`。
+4. Feature List 须有 Status 列，与各 Feature 文首状态一致。
+
+## 9. 验收
 
 - Feature 是最小交付单位。
 - **唯一验收标准**：该 Feature Spec 中的 Test Cases 全部通过。
-- 无对应 Test Case 的行为，不算 Phase 1 范围。
+- 无对应 Test Case 的行为，不算该 Phase 范围。

@@ -2,6 +2,14 @@
 
 > 用户在 `lxzxai.com` 用 Email 注册，自选子域 slug，系统校验后创建租户并绑定 `{slug}.lxzxai.com`。
 
+
+| 字段 | 值 |
+|------|-----|
+| **Status** | `review` |
+| **Owner** | |
+| **Approved by** | |
+| **Approved at** | |
+
 ## 范围
 
 - Email + 密码注册

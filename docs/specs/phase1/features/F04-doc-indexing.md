@@ -2,6 +2,14 @@
 
 > 仅对 `published` 文档解析、分块、embedding，写入 PostgreSQL/pgvector；按租户隔离。
 
+
+| 字段 | 值 |
+|------|-----|
+| **Status** | `review` |
+| **Owner** | |
+| **Approved by** | |
+| **Approved at** | |
+
 ## 范围
 
 - 消费「文档已 publish」事件（或等价轮询任务）

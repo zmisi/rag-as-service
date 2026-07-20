@@ -2,6 +2,14 @@
 
 > 租户站 RAG Agent：意图路由、上下文组装、多轮记忆与压缩、工具调用、Agent Loop；LLM = QWen；检索走 F04。
 
+
+| 字段 | 值 |
+|------|-----|
+| **Status** | `review` |
+| **Owner** | |
+| **Approved by** | |
+| **Approved at** | |
+
 ## 范围
 
 - 在 `active` 会话中接收用户消息并回复（依赖 F05）
