@@ -167,7 +167,7 @@ Phase 1 仅 `owner`；扩展角色时改 CHECK + Spec。
 
 ## 6. 建表示例（DDL 骨架）
 
-可执行脚本：[scripts/sql/f01_registration_tenancy.sql](../../../../scripts/sql/f01_registration_tenancy.sql)。
+可执行迁移（Alembic）：[`apps/api/alembic/versions/20260720_f01_registration_tenancy.py`](../../../../apps/api/alembic/versions/20260720_f01_registration_tenancy.py)。API 启动时默认执行 `alembic upgrade head`（`AUTO_MIGRATE`）。
 
 ```sql
 CREATE TABLE rag_service.users (
