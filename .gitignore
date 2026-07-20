@@ -1,0 +1,6 @@
+.venv/
+.env
+apps/api/var/
+__pycache__/
+*.pyc
+.pytest_cache/

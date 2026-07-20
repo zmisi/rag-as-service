@@ -1,9 +1,27 @@
--- F01 多租户建表脚本
--- 来源：docs/specs/phase1/features/F01-registration-tenancy-data-model.md
--- 依赖：PostgreSQL 13+（gen_random_uuid）；trigger 语法兼容 PG 14+（EXECUTE FUNCTION）
+"""F01 registration / tenancy schema (users, tenants, tenant_members).
 
-BEGIN;
+Revision ID: 20260720_f01
+Revises:
+Create Date: 2026-07-20
 
+Source: docs/specs/phase1/features/F01-registration-tenancy-data-model.md
+"""
+
+from __future__ import annotations
+
+from typing import Sequence, Union
+
+from alembic import op
+
+revision: str = "20260720_f01"
+down_revision: Union[str, Sequence[str], None] = None
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    op.execute(
+        """
 CREATE SCHEMA IF NOT EXISTS rag_service;
 
 CREATE OR REPLACE FUNCTION rag_service.f_common_update_at()
@@ -17,9 +35,6 @@ $$ LANGUAGE plpgsql;
 COMMENT ON FUNCTION rag_service.f_common_update_at() IS
   'BEFORE UPDATE：仅刷新 update_at，不修改 create_at';
 
--- ---------------------------------------------------------------------------
--- users
--- ---------------------------------------------------------------------------
 CREATE TABLE rag_service.users (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   email         text NOT NULL,
@@ -41,9 +56,6 @@ CREATE TRIGGER tr_users_lmt
   FOR EACH ROW
   EXECUTE FUNCTION rag_service.f_common_update_at();
 
--- ---------------------------------------------------------------------------
--- tenants
--- ---------------------------------------------------------------------------
 CREATE TABLE rag_service.tenants (
   id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   subdomain    text NOT NULL,
@@ -67,9 +79,6 @@ CREATE TRIGGER tr_tenants_lmt
   FOR EACH ROW
   EXECUTE FUNCTION rag_service.f_common_update_at();
 
--- ---------------------------------------------------------------------------
--- tenant_members
--- ---------------------------------------------------------------------------
 CREATE TABLE rag_service.tenant_members (
   id        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL REFERENCES rag_service.tenants (id) ON DELETE CASCADE,
@@ -96,5 +105,16 @@ CREATE TRIGGER tr_tenant_members_lmt
   BEFORE UPDATE ON rag_service.tenant_members
   FOR EACH ROW
   EXECUTE FUNCTION rag_service.f_common_update_at();
+"""
+    )
 
-COMMIT;
+
+def downgrade() -> None:
+    op.execute(
+        """
+DROP TABLE IF EXISTS rag_service.tenant_members;
+DROP TABLE IF EXISTS rag_service.tenants;
+DROP TABLE IF EXISTS rag_service.users;
+DROP FUNCTION IF EXISTS rag_service.f_common_update_at();
+"""
+    )
