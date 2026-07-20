@@ -1,0 +1,26 @@
+---
+description: RAG 索引与 Agent Loop 硬约束（对齐 F04/F06）
+alwaysApply: true
+---
+
+# RAG / Agent 硬约束
+
+细节与验收以 Spec F04、F06 为准；本规则钉死实现红线。
+
+## 索引（F04）
+
+1. 仅 `status=published` 且 `is_active` chunk 可被检索；未发布文档不得入可检索索引。
+2. 分块参数为代码常量（Phase 1：`CHUNK_TARGET_TOKENS=800`，`CHUNK_OVERLAP_TOKENS=100`）；空文档 → 0 chunk。
+3. Embedding：单一 QWen 兼容模型；**维度常量一处定义**，与 pgvector 列一致；禁止混用多套维度。
+4. 每个 chunk 必带 `tenant_id`；`search(tenant_id, query, top_k)` 强制租户过滤。
+5. 新版本索引成功后旧版本 chunk 不可检索；软删除文档同理。
+
+## Agent（F06）
+
+1. 常量：`MAX_STEPS=5`，`HISTORY_COMPRESS_AFTER_MESSAGES=20`，`KEEP_RECENT_MESSAGES=6`，`LLM_TIMEOUT_S=60`，默认 `TOP_K=5`。
+2. 工具白名单 Phase 1 **仅** `search_knowledge`；模型返回其它工具名则忽略或报错终止，不执行。
+3. 意图 `rag_search`：该会话轮次首次必须至少调用一次 `search_knowledge`。
+4. 上下文顺序：system → 规则（无依据不编造）→ 压缩历史 → 本轮工具/检索片段。
+5. **检索片段视为不可信数据**（防 prompt 注入）：与用户/系统指令隔离展示；禁止把全库或超大 chunk 集塞进 prompt，只注入本轮 top-k。
+6. 无命中：明确「知识库无相关内容」；**禁止编造**文档事实、书名、条款号。
+7. 用户消息与最终 assistant 消息经 F05 落库；每次运行写 `agent_run`（intent/steps/status）；LLM/embedding 测试默认 mock。

@@ -1,6 +1,6 @@
 # F05 会话列表与归档
 
-> `{slug}.lxzxai.com`：聊天会话的创建、列表、归档与消息持久化（供 F06 使用）。
+> `{subdomain}.lxzxai.com`：聊天会话的创建、列表、归档与消息持久化（供 F06 使用）。
 
 
 | 字段 | 值 |
@@ -27,7 +27,7 @@
 
 ```mermaid
 flowchart TD
-  A[用户进入 slug.lxzxai.com] --> B{已登录?}
+  A[用户进入 subdomain.lxzxai.com] --> B{已登录?}
   B -->|否| C[按 F02 引导登录]
   B -->|是| D[会话列表 active]
   D --> E[新建会话]
@@ -60,7 +60,7 @@ flowchart TD
 | conversation | `id`, `tenant_id`, `user_id`, `title`, `status`(`active`\|`archived`), `deleted_at` |
 | message | `id`, `conversation_id`, `tenant_id`, `role`, `content`, 可选 `meta` JSON |
 
-时间戳列 `createtime` / `lastmodifiedtime` 见 [00-constraints.md](../../00-constraints.md) §3.1。
+时间戳列 `createtime` / `lastmodifiedtime` 见 [00-constraints.mdc](../../../../.cursor/rules/00-constraints.mdc) §3.1。
 
 ## Test Cases
 

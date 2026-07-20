@@ -9,7 +9,7 @@
 | **Approved by** | |
 | **Approved at** | |
 
-> Status：`draft` → `review` → `approved` → `done`。未 `approved` 不得实现，见 [00-constraints.md](00-constraints.md) §8。
+> Status：`draft` → `review` → `approved` → `done`。未 `approved` 不得实现，见 [00-constraints.mdc](../../.cursor/rules/00-constraints.mdc) §8。
 
 ## 范围
 
@@ -36,7 +36,7 @@ flowchart TD
 
 ## 数据与边界
 
-> 全表强制含 `createtime` / `lastmodifiedtime`（timestamptz + trigger），见 [00-constraints.md](00-constraints.md) §3.1；下表可省略不写。
+> 全表强制含 `createtime` / `lastmodifiedtime`（timestamptz + trigger），见 [00-constraints.mdc](../../.cursor/rules/00-constraints.mdc) §3.1；下表可省略不写。
 
 | 实体 | 关键字段 / 约束 |
 |------|----------------|

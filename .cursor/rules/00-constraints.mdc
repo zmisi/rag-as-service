@@ -1,25 +1,30 @@
+---
+description: 全项目根本约束；不可被 Phase/Feature 绕过
+alwaysApply: true
+---
+
 # 00 根本约束
 
-本文件是**全项目**最基本规则，置于 `docs/specs/` 根下；不可被任何 Phase / Feature Spec 绕过。冲突时以本文件为准。
+本文件是**全项目**最基本规则（权威正文在本文件，Cursor 每次会话自动注入）。不可被任何 Phase / Feature Spec 绕过。冲突时以本文件为准。
 
 ## 1. 域名与路由
 
 | 表面 | 用途 | Phase 1 |
 |------|------|---------|
 | `lxzxai.com` | 主站：注册、登录 | 是 |
-| `{slug}.lxzxai.com` | 租户服务入口（RAG 聊天） | 是 |
-| `{slug}.lxzxai.com/admin` | 租户文档管理 | 是 |
-| `{slug}.lxzxai.com/api` | 对外 API 整合网关 | **否**（Phase 2） |
+| `{subdomain}.lxzxai.com` | 租户服务入口（RAG 聊天） | 是 |
+| `{subdomain}.lxzxai.com/admin` | 租户文档管理 | 是 |
+| `{subdomain}.lxzxai.com/api` | 对外 API 整合网关 | **否**（Phase 2） |
 
 - 不再使用 `lxtechai.com`。
-- Host 解析到租户：`slug` → `tenant_id`；未知 slug → 404。
+- Host 解析到租户：`subdomain` → `tenant_id`；未知 subdomain → 404。
 - 租户根路径 = 聊天入口；`/admin` = 管理端。
 
 ## 2. 多租户与子域
 
 - 一个注册用户创建一个租户；数据与向量索引按 `tenant_id` 隔离。
-- 子域 `slug`：**用户可编辑**，系统校验格式与**全局唯一**。
-- slug 规则：
+- 租户 `subdomain`：注册时由用户选定，系统校验格式与**全局唯一**（Phase 1 选定后不可改，见 F01）。
+- `subdomain` 规则：
   - 小写字母、数字、连字符 `-`
   - 长度 3–32
   - 不以 `-` 开头或结尾
@@ -30,6 +35,8 @@
 
 | 组件 | 选型 |
 |------|------|
+| 后端 | FastAPI（Python） |
+| 前端 | 独立 Next.js（App Router）+ React + TypeScript；经反代与 API 同站对外 |
 | 数据库 | PostgreSQL |
 | 向量 | pgvector |
 | LLM | QWen |
@@ -53,8 +60,8 @@
 ## 4. 认证（Phase 1）
 
 - Phase 1 **仅 Email** 注册与登录。
-- 微信登录：**不做验收**；可留接口位，标 Phase 1.5（见 [phase2/README.md](phase2/README.md)）。
-- 会话：cookie `Domain=.lxzxai.com`；主站与 `{slug}.lxzxai.com`（含 `/admin`）同一会话族。
+- 微信登录：**不做验收**；可留接口位，标 Phase 1.5（见 [phase2/README.md](../../docs/specs/phase2/README.md)）。
+- 会话：cookie `Domain=.lxzxai.com`；主站与 `{subdomain}.lxzxai.com`（含 `/admin`）同一会话族。
 
 ## 5. 文档与索引
 
@@ -74,7 +81,7 @@
 
 - 微信登录验收
 - SOP 必须验证成功才能上传/发布
-- `{slug}.lxzxai.com/api` 对外整合网关
+- `{subdomain}.lxzxai.com/api` 对外整合网关
 - 跨租户共享知识库
 
 ## 8. Feature 状态（实现门禁）
@@ -99,4 +106,4 @@
 
 - Feature 是最小交付单位。
 - **唯一验收标准**：该 Feature Spec 中的 Test Cases 全部通过。
-- 无对应 Test Case 的行为，不算该 Phase 范围。
+- 无对应 Test Case 的行为，不算 Phase 1 范围。

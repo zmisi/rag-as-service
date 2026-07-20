@@ -1,0 +1,12 @@
+---
+description: 测试须对齐 Feature Spec 的 Test Cases
+alwaysApply: true
+---
+
+# 测试约定
+
+1. 实现 Feature `Fxx` 时，自动化测试覆盖该 Spec 全部 Test Cases；用例 ID 与 Spec 对齐（`Fxx-T01`…）；缺一条不算完成。
+2. 类型与 Spec 表一致：`api` → FastAPI TestClient / httpx；`e2e` → Playwright（覆盖 cookie Domain、重定向）；`unit` → 纯逻辑单测。
+3. 多租户相关用例必须验证隔离（tenant-A 数据不可被 tenant-B 读到）。
+4. 涉及 LLM / embedding：默认 mock/桩；CI 不依赖真实 QWen（除非显式集成任务）。
+5. schema / 迁移测试须覆盖 `createtime` / `lastmodifiedtime` trigger 行为（constraints §3.1）。

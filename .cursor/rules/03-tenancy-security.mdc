@@ -1,0 +1,13 @@
+---
+description: 多租户隔离与认证安全实现检查清单
+alwaysApply: true
+---
+
+# 租户隔离与安全
+
+1. 凡读库 / 写库 / 向量检索：查询必须强制 `tenant_id` 过滤；禁止「先全量查出再在应用层过滤」作为唯一隔离手段。
+2. Host 上的 `subdomain` → `tenant_id`；未知 subdomain → 404；会话用户必须是该租户成员，否则 403。
+3. 密码：不可逆哈希（argon2 或 bcrypt）；禁止明文或可逆加密落库。
+4. Cookie：`Domain=.lxzxai.com`、`Secure`、`HttpOnly`、`SameSite=Lax`；会话 TTL 14 天（见 F02）。
+5. 登录失败统一「邮箱或密码错误」；跨租户资源返回 403/404，不泄露他租户存在性细节。
+6. 前端经同源反代访问后端，保证 cookie 同站可用；不在浏览器暴露后端内网地址作为权威入口。

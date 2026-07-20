@@ -87,7 +87,7 @@ flowchart TD
 |-------------|----------------|
 | agent_run | `id`, `conversation_id`, `tenant_id`, `intent`, `steps`, `status` |
 
-时间戳列 `createtime` / `lastmodifiedtime` 见 [00-constraints.md](../../00-constraints.md) §3.1。
+时间戳列 `createtime` / `lastmodifiedtime` 见 [00-constraints.mdc](../../../../.cursor/rules/00-constraints.mdc) §3.1。
 | 配置常量 | `MAX_STEPS=5`, `HISTORY_COMPRESS_AFTER_MESSAGES=20`, `KEEP_RECENT_MESSAGES=6`, `LLM_TIMEOUT_S=60` |
 | 工具 | `search_knowledge(query: string) -> {chunks: [...]}` |
 
