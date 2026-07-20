@@ -1,0 +1,11 @@
+Metadata-Version: 2.4
+Name: rag-api
+Version: 0.1.0
+Summary: RAG-as-a-Service FastAPI backend
+Requires-Python: >=3.12
+Requires-Dist: fastapi>=0.115
+Requires-Dist: uvicorn[standard]>=0.32
+Requires-Dist: sqlalchemy>=2.0
+Requires-Dist: alembic>=1.14
+Requires-Dist: psycopg[binary]>=3.2
+Requires-Dist: pydantic-settings>=2.6

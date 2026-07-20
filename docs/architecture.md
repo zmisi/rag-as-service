@@ -138,6 +138,7 @@ apps/web/
 | 多租户 | Host `subdomain` → `tenant_id`；读写/向量检索强制租户过滤 |
 | 会话 | Cookie `Domain=.lxzxai.com`，`Secure` / `HttpOnly` / `SameSite=Lax`；TTL 见 F02 |
 | 时间戳 | 全表 `createtime` / `lastmodifiedtime` + DB trigger（constraints §3.1） |
+| 迁移 | Alembic（`apps/api/alembic/`）；API 启动默认 `upgrade head`（`AUTO_MIGRATE`） |
 | RAG | 仅 `published` 可检索；Agent 常量与工具白名单见 `07-rag-agent` / F04、F06 |
 | 测试 | Spec Test Cases 全覆盖；LLM 默认 mock（`08-testing`） |
 
