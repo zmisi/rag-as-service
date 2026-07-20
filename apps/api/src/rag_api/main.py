@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI
 
+from rag_api.api.v1 import api_router
 from rag_api.config import get_settings
 from rag_api.db import run_migrations
 
@@ -24,6 +25,7 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="rag-as-service", lifespan=lifespan)
+app.include_router(api_router, prefix="/v1")
 
 
 @app.get("/healthz")

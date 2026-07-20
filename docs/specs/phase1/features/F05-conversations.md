@@ -5,7 +5,7 @@
 
 | 字段 | 值 |
 |------|-----|
-| **Status** | `review` |
+| **Status** | `approved` |
 | **Owner** | |
 | **Approved by** | |
 | **Approved at** | |
@@ -49,9 +49,23 @@ flowchart TD
 2. 新建会话：`status=active`，可有可选 `title`（默认「新会话」或首条用户消息截断）。
 3. 默认列表仅 `active`；归档列表或带 `?status=archived` 可查归档。
 4. Archive：`active → archived`；Unarchive：`archived → active`。
-5. 消息追加只允许在 `active` 会话；向 `archived` 发消息 → 4xx（或自动 unarchive——Phase 1 **固定为 4xx**）。
-6. 消息字段：`role`, `content`；排序默认按 `createtime` 升序；tool 相关扩展字段由 F06 写入但不破坏本 Feature 的列表/历史 API。
+5. 消息追加只允许在 `active` 会话；向 `archived` 发消息 → **409**（或自动 unarchive——Phase 1 **固定为 409**）。
+6. 消息字段：`role`, `content`；排序默认按 `create_at` 升序；tool 相关扩展字段由 F06 写入但不破坏本 Feature 的列表/历史 API。
 7. 删除会话：Phase 1 软删除；列表不可见。
+
+## API
+
+应用内前缀 `/v1`（对外经反代为 `/backend/v1/...`）。需已登录且为 Host 对应租户成员。跨租户 / 非本用户资源 → **404**。
+
+| Method | Path | 行为 |
+|--------|------|------|
+| `POST` | `/v1/conversations` | 创建；`status=active`；可选 `title`，默认「新会话」→ 201 |
+| `GET` | `/v1/conversations?status=active\|archived` | 默认 `active`；排除已软删；仅本 `tenant_id`+`user_id` |
+| `POST` | `/v1/conversations/{id}/archive` | `active→archived` |
+| `POST` | `/v1/conversations/{id}/unarchive` | `archived→active` |
+| `DELETE` | `/v1/conversations/{id}` | 软删除（写 `deleted_at`） |
+| `GET` | `/v1/conversations/{id}/messages` | 按 `create_at` 升序（Spec 文中 `createtime` 映射为此列） |
+| `POST` | `/v1/conversations/{id}/messages` | 仅 `active`；`archived` → **409** |
 
 ## 数据与边界
 
@@ -60,16 +74,16 @@ flowchart TD
 | conversation | `id`, `tenant_id`, `user_id`, `title`, `status`(`active`\|`archived`), `deleted_at` |
 | message | `id`, `conversation_id`, `tenant_id`, `role`, `content`, 可选 `meta` JSON |
 
-时间戳列 `createtime` / `lastmodifiedtime` 见 [00-constraints.mdc](../../../../.cursor/rules/00-constraints.mdc) §3.1。
+时间戳列与 F01 一致：`create_at` / `update_at` + trigger（见 [00-constraints.mdc](../../../../.cursor/rules/00-constraints.mdc) §3.1 语义）。
 
 ## Test Cases
 
 | ID | 步骤 | 期望 | 类型 |
 |----|------|------|------|
 | F05-T01 | Given 成员登录 When 创建会话 | Then 201；status=`active`；出现在默认列表 | api |
-| F05-T02 | Given 会话 A 有 3 条消息 When GET 历史 | Then 按 `createtime` 升序返回 3 条 | api |
+| F05-T02 | Given 会话 A 有 3 条消息 When GET 历史 | Then 按 `create_at` 升序返回 3 条 | api |
 | F05-T03 | Given active 会话 When archive | Then 默认列表不可见；archived 列表可见 | api |
-| F05-T04 | Given archived 会话 When POST 消息 | Then 4xx | api |
+| F05-T04 | Given archived 会话 When POST 消息 | Then 409 | api |
 | F05-T05 | Given archived 会话 When unarchive | Then 回到默认列表；可再发消息 | api |
 | F05-T06 | Given tenant-A 会话 id When tenant-B GET | Then 404 或 403 | api |
 | F05-T07 | Given 软删除会话 When 列表 | Then 不可见 | api |
