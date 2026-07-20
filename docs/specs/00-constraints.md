@@ -1,0 +1,84 @@
+# 00 根本约束
+
+本文件是**全项目**最基本规则，置于 `docs/specs/` 根下；不可被任何 Phase / Feature Spec 绕过。冲突时以本文件为准。
+
+## 1. 域名与路由
+
+| 表面 | 用途 | Phase 1 |
+|------|------|---------|
+| `lxzxai.com` | 主站：注册、登录 | 是 |
+| `{slug}.lxzxai.com` | 租户服务入口（RAG 聊天） | 是 |
+| `{slug}.lxzxai.com/admin` | 租户文档管理 | 是 |
+| `{slug}.lxzxai.com/api` | 对外 API 整合网关 | **否**（Phase 2） |
+
+- 不再使用 `lxtechai.com`。
+- Host 解析到租户：`slug` → `tenant_id`；未知 slug → 404。
+- 租户根路径 = 聊天入口；`/admin` = 管理端。
+
+## 2. 多租户与子域
+
+- 一个注册用户创建一个租户；数据与向量索引按 `tenant_id` 隔离。
+- 子域 `slug`：**用户可编辑**，系统校验格式与**全局唯一**。
+- slug 规则：
+  - 小写字母、数字、连字符 `-`
+  - 长度 3–32
+  - 不以 `-` 开头或结尾
+  - 保留字不可用：`www`、`admin`、`api`、`app`、`mail`、`static`、`cdn`、`lxzxai`
+- 跨租户读写一律禁止（含向量检索）。
+
+## 3. 技术栈
+
+| 组件 | 选型 |
+|------|------|
+| 数据库 | PostgreSQL |
+| 向量 | pgvector |
+| LLM | QWen |
+
+## 3.1 数据库时间戳（全表强制）
+
+所有业务表（含关联表、任务表、chunk 表等）**必须**包含以下两列：
+
+| 列 | 类型 | Insert | Update |
+|----|------|--------|--------|
+| `createtime` | `timestamptz` | 默认值为写入时刻（`DEFAULT now()`）；应用可不显式传入 | **禁止改写**（trigger 保持原值） |
+| `lastmodifiedtime` | `timestamptz` | 默认值为写入时刻（`DEFAULT now()`） | **必须**由 trigger 更新为本次写入时刻 |
+
+实现要求：
+
+1. 用 PostgreSQL **trigger**（推荐共用函数 + 每表 `BEFORE UPDATE`）维护 `lastmodifiedtime`；禁止仅靠应用层自觉赋值作为唯一手段。
+2. `BEFORE UPDATE` trigger 行为：`NEW.lastmodifiedtime := now()`；`NEW.createtime := OLD.createtime`。
+3. Feature Spec「数据与边界」中可省略这两列的重复罗列；**未写不等于不存在**——建表时一律带上。
+4. 迁移/schema 测试须能证明：任意表 insert 后两列非空且接近当前时间；update 后仅 `lastmodifiedtime` 前进、`createtime` 不变。
+
+## 4. 认证（Phase 1）
+
+- Phase 1 **仅 Email** 注册与登录。
+- 微信登录：**不做验收**；可留接口位，标 Phase 1.5（见 [phase2/README.md](phase2/README.md)）。
+- 会话：cookie `Domain=.lxzxai.com`；主站与 `{slug}.lxzxai.com`（含 `/admin`）同一会话族。
+
+## 5. 文档与索引
+
+- 文档状态机：`draft` → `saved` → `verified` → `published`（细节见 F03）。
+- **仅 `published` 文档进入索引**（F04）；未发布文档不可被 RAG 检索（F06）。
+- Phase 1 的 `verified` 是可测状态，**不做 SOP 内容强制校验**（SOP 门禁属 Phase 2）。
+- 支持类型：txt / pdf / word / ppt。
+- 版本从 `1.0` 起。
+
+## 6. Agent（Phase 1）
+
+- 租户入口当前能力：RAG Agent（检索 + 多轮对话）。
+- LLM 调用使用 QWen。
+- Agent Loop、意图路由、上下文组装、记忆压缩、工具调用：见 F06。
+
+## 7. Phase 1 明确不做
+
+- 微信登录验收
+- SOP 必须验证成功才能上传/发布
+- `{slug}.lxzxai.com/api` 对外整合网关
+- 跨租户共享知识库
+
+## 8. 验收
+
+- Feature 是最小交付单位。
+- **唯一验收标准**：该 Feature Spec 中的 Test Cases 全部通过。
+- 无对应 Test Case 的行为，不算 Phase 1 范围。
