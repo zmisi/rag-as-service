@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     )
     # When True (default), run `alembic upgrade head` during app startup.
     auto_migrate: bool = True
+    # Dev-only: accept X-Test-User-Id instead of F02 cookie auth.
+    auth_stub_enabled: bool = False
 
 
 @lru_cache

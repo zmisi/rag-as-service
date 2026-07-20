@@ -6,7 +6,7 @@ alwaysApply: false
 
 # Next.js 约定
 
-1. 独立前端：Next.js App Router + TypeScript + React；调用 FastAPI，不把业务/RAG 逻辑搬进 Next Route Handler（除薄反代/BFF 外）。
+1. 独立前端：Next.js App Router + TypeScript + React；调用 FastAPI，不把业务/RAG 逻辑搬进 Next Route Handler（除薄反代/BFF 外）。**前后端分离**硬规则见 `00-constraints` §3.0。
 2. 服务端依据 Host / cookie 解析租户与登录态；租户页不以客户端「猜 subdomain」为权威。
 3. 主站（注册/登录）与 `{subdomain}.lxzxai.com` 租户站（聊天、`/admin`）路由清晰拆分；未登录访问 `/admin` 按 F02 重定向 `lxzxai.com/login`。
 4. 浏览器只请求同源反代路径（如 `/backend/...`），不写死后端内网 URL。

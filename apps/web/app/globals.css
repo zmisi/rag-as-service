@@ -1,0 +1,335 @@
+:root {
+  --bg: #0f1419;
+  --panel: #171c22;
+  --panel-2: #1e252e;
+  --border: #2a3340;
+  --text: #e8edf2;
+  --muted: #8b98a8;
+  --accent: #3d8bfd;
+  --accent-hover: #5a9dff;
+  --danger: #e35d6a;
+  --user-bg: #243044;
+  --assistant-bg: #1a222c;
+  --font: "IBM Plex Sans", "Source Han Sans SC", "Noto Sans SC", system-ui,
+    sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  font-family: var(--font);
+  background:
+    radial-gradient(ellipse at top left, #1a2838 0%, transparent 50%),
+    radial-gradient(ellipse at bottom right, #152018 0%, transparent 45%),
+    var(--bg);
+  color: var(--text);
+}
+
+a {
+  color: var(--accent);
+}
+
+.home {
+  max-width: 36rem;
+  margin: 4rem auto;
+  padding: 0 1.25rem;
+  line-height: 1.6;
+}
+
+.home h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+
+.home code {
+  font-size: 0.9em;
+  background: var(--panel-2);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+}
+
+.chat-shell {
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) 1fr;
+  height: 100vh;
+  min-height: 480px;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem 1rem 0.75rem;
+}
+
+.sidebar-title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0 1rem 0.75rem;
+}
+
+.tab {
+  flex: 1;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.tab.active {
+  color: var(--text);
+  background: var(--panel-2);
+  border-color: #3a4656;
+}
+
+.conv-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0.5rem 1rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.conv-item {
+  margin-bottom: 0.35rem;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+}
+
+.conv-item.selected {
+  background: var(--panel-2);
+  border-color: var(--border);
+}
+
+.conv-main {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0.65rem 0.75rem 0.25rem;
+  cursor: pointer;
+}
+
+.conv-title {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.conv-actions {
+  display: flex;
+  gap: 0.35rem;
+  padding: 0 0.5rem 0.5rem;
+}
+
+.empty-hint {
+  color: var(--muted);
+  padding: 1rem 0.75rem;
+  font-size: 0.9rem;
+}
+
+.chat-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: color-mix(in srgb, var(--panel) 55%, transparent);
+}
+
+.chat-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.chat-header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-pill {
+  font-size: 0.75rem;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.15rem 0.55rem;
+}
+
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.messages.empty {
+  color: var(--muted);
+  align-items: center;
+  justify-content: center;
+}
+
+.bubble {
+  max-width: min(42rem, 92%);
+  padding: 0.65rem 0.85rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+.bubble.role-user {
+  align-self: flex-end;
+  background: var(--user-bg);
+}
+
+.bubble.role-assistant,
+.bubble.role-system,
+.bubble.role-tool {
+  align-self: flex-start;
+  background: var(--assistant-bg);
+}
+
+.bubble-meta {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: 0.35rem;
+}
+
+.bubble-body {
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.composer {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem 1.25rem;
+  border-top: 1px solid var(--border);
+  align-items: end;
+}
+
+.composer-hint {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.composer textarea {
+  resize: vertical;
+  min-height: 4.5rem;
+  font: inherit;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+.composer textarea:focus {
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 1px;
+}
+
+.btn {
+  font: inherit;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  padding: 0.4rem 0.75rem;
+  cursor: pointer;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn.primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: #fff;
+}
+
+.btn.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.btn.ghost {
+  background: transparent;
+  color: var(--muted);
+  padding: 0.25rem 0.45rem;
+  font-size: 0.8rem;
+}
+
+.btn.danger {
+  background: transparent;
+  color: var(--danger);
+  border-color: transparent;
+  padding: 0.25rem 0.45rem;
+  font-size: 0.8rem;
+}
+
+.banner.error {
+  margin: 0.75rem 1.25rem 0;
+  padding: 0.65rem 0.85rem;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--danger) 18%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, var(--border));
+  color: #ffc9cf;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 720px) {
+  .chat-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(200px, 40vh) 1fr;
+  }
+
+  .sidebar {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+}

@@ -130,6 +130,7 @@ apps/web/
 
 - 租户身份以 Host + cookie 为准，不以客户端「猜 subdomain」为权威。
 - 业务 / RAG 逻辑留在 `apps/api`；Next 仅 UI + 薄 BFF。
+- **前后端分离**为硬规则（见 [00-constraints.mdc](../.cursor/rules/00-constraints.mdc) §3.0）：不以 Next 全栈替代 FastAPI。
 
 ## 5. 横切约定（摘要）
 

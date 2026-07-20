@@ -41,8 +41,10 @@ def get_current_tenant(
     request: Request,
     db: Session = Depends(get_db),
     host: str | None = Header(default=None, alias="Host"),
+    x_forwarded_host: str | None = Header(default=None, alias="X-Forwarded-Host"),
 ) -> Tenant:
-    raw_host = host or request.headers.get("host")
+    # Prefer X-Forwarded-Host so Next /backend rewrites still carry the browser Host.
+    raw_host = x_forwarded_host or host or request.headers.get("host")
     subdomain = parse_subdomain(raw_host)
     if subdomain is None:
         raise HTTPException(status_code=404, detail="Unknown host")
@@ -55,8 +57,27 @@ def get_current_tenant(
 def get_current_user(
     db: Session = Depends(get_db),
     tenant: Tenant = Depends(get_current_tenant),
+    x_test_user_id: str | None = Header(default=None, alias="X-Test-User-Id"),
 ) -> User:
-    """F02 placeholder: cookie auth not wired; tests override this dependency."""
+    """F02 placeholder: cookie auth not wired.
+
+    When AUTH_STUB_ENABLED=true, accept X-Test-User-Id for local UI / tests.
+    Tests may still override this dependency.
+    """
+    from rag_api.config import get_settings
+
+    if get_settings().auth_stub_enabled:
+        if not x_test_user_id:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        try:
+            user_id = UUID(x_test_user_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=401, detail="Invalid user id") from exc
+        user = db.get(User, user_id)
+        if user is None:
+            raise HTTPException(status_code=401, detail="Unknown user")
+        return user
+
     raise HTTPException(status_code=401, detail="Not authenticated")
 
 
