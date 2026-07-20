@@ -9,4 +9,4 @@ alwaysApply: true
 2. 类型与 Spec 表一致：`api` → FastAPI TestClient / httpx；`e2e` → Playwright（覆盖 cookie Domain、重定向）；`unit` → 纯逻辑单测。
 3. 多租户相关用例必须验证隔离（tenant-A 数据不可被 tenant-B 读到）。
 4. 涉及 LLM / embedding：默认 mock/桩；CI 不依赖真实 QWen（除非显式集成任务）。
-5. schema / 迁移测试须覆盖 `createtime` / `lastmodifiedtime` trigger 行为（constraints §3.1）。
+5. schema / 迁移测试须覆盖 `create_at` / `update_at` 及 `tr_{表名}_lmt` trigger 行为（constraints §3.2）。

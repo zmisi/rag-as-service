@@ -41,21 +41,28 @@ alwaysApply: true
 | 向量 | pgvector |
 | LLM | QWen |
 
-## 3.1 数据库时间戳（全表强制）
+## 3.1 Schema
+
+- 业务表统一置于 PostgreSQL schema **`rag_service`**；禁止在 `public` 下建业务表。
+- 迁移（Alembic）须 `CREATE SCHEMA IF NOT EXISTS rag_service`，对象名限定为 `rag_service.{table}`。
+- 应用连接可设 `search_path=rag_service,public` 或 ORM 显式指定 schema。
+
+## 3.2 数据库时间戳（全表强制）
 
 所有业务表（含关联表、任务表、chunk 表等）**必须**包含以下两列：
 
 | 列 | 类型 | Insert | Update |
 |----|------|--------|--------|
-| `createtime` | `timestamptz` | 默认值为写入时刻（`DEFAULT now()`）；应用可不显式传入 | **禁止改写**（trigger 保持原值） |
-| `lastmodifiedtime` | `timestamptz` | 默认值为写入时刻（`DEFAULT now()`） | **必须**由 trigger 更新为本次写入时刻 |
+| `create_at` | `timestamp` | 默认值为写入时刻（`DEFAULT now()`）；应用可不显式传入 | **禁止改写**（应用层不得 UPDATE 该列） |
+| `update_at` | `timestamp` | 默认值为写入时刻（`DEFAULT now()`） | **必须**由 trigger 更新为本次写入时刻 |
 
 实现要求：
 
-1. 用 PostgreSQL **trigger**（推荐共用函数 + 每表 `BEFORE UPDATE`）维护 `lastmodifiedtime`；禁止仅靠应用层自觉赋值作为唯一手段。
-2. `BEFORE UPDATE` trigger 行为：`NEW.lastmodifiedtime := now()`；`NEW.createtime := OLD.createtime`。
-3. Feature Spec「数据与边界」中可省略这两列的重复罗列；**未写不等于不存在**——建表时一律带上。
-4. 迁移/schema 测试须能证明：任意表 insert 后两列非空且接近当前时间；update 后仅 `lastmodifiedtime` 前进、`createtime` 不变。
+1. 用 PostgreSQL **trigger**（共用函数 `rag_service.f_common_update_at()` + 每表 `BEFORE UPDATE`）维护 `update_at`；禁止仅靠应用层自觉赋值作为唯一手段。
+2. `f_common_update_at()` 行为：`NEW.update_at := now()`；**不**修改 `create_at`。
+3. 每表 trigger **命名**：`tr_{表名}_lmt`（例：`rag_service.users` → `tr_users_lmt`）。
+4. Feature Spec「数据与边界」中可省略这两列的重复罗列；**未写不等于不存在**——建表时一律带上。
+5. 迁移/schema 测试须能证明：任意表 insert 后两列非空且接近当前时间；update 后仅 `update_at` 前进、`create_at` 不变。
 
 ## 4. 认证（Phase 1）
 

@@ -65,7 +65,7 @@ flowchart TD
 |------|----------------|
 | document | `id`, `tenant_id`, `title`, `tag`, `status`, `version`, `created_by`, `deleted_at` |
 
-时间戳列 `createtime` / `lastmodifiedtime` 见 [00-constraints.mdc](../../../../.cursor/rules/00-constraints.mdc) §3.1。
+时间戳列 `create_at` / `update_at` 见 [00-constraints.mdc](../../../../.cursor/rules/00-constraints.mdc) §3.2。
 | document_file | `document_id`, `storage_key`, `filename`, `content_type`, `size_bytes` |
 | status | `draft` \| `saved` \| `verified` \| `published` |
 

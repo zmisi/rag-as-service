@@ -60,7 +60,8 @@ flowchart TD
 | tenant | `id`, `subdomain` UNIQUE |
 | tenant_member | `tenant_id`, `user_id`, `role=owner`；注册时一条 |
 
-时间戳列 `createtime` / `lastmodifiedtime` 见 [00-constraints.mdc](../../../../.cursor/rules/00-constraints.mdc) §3.1。
+时间戳列 `create_at` / `update_at` 见 [00-constraints.mdc](../../../../.cursor/rules/00-constraints.mdc) §3.2。  
+表结构明细见 [F01-registration-tenancy-data-model.md](F01-registration-tenancy-data-model.md)。
 
 ## Test Cases
 

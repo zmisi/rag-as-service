@@ -36,7 +36,7 @@ flowchart TD
 
 ## 数据与边界
 
-> 全表强制含 `createtime` / `lastmodifiedtime`（timestamptz + trigger），见 [00-constraints.mdc](../../.cursor/rules/00-constraints.mdc) §3.1；下表可省略不写。
+> 全表强制含 `create_at` / `update_at`（`timestamp` + trigger `tr_{表名}_lmt`），见 [00-constraints.mdc](../../.cursor/rules/00-constraints.mdc) §3.2；下表可省略不写。
 
 | 实体 | 关键字段 / 约束 |
 |------|----------------|
