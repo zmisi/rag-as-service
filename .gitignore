@@ -25,6 +25,9 @@ test-results/
 # App runtime
 apps/api/var/
 
+# OpenSpec (local workflow artifacts)
+openspec/
+
 # OS / IDE
 .DS_Store
 .idea/
