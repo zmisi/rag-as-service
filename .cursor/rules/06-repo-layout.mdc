@@ -1,0 +1,34 @@
+---
+description: 仓库目录、反代路径与本地环境约定
+alwaysApply: true
+---
+
+# 仓库布局与本地环境
+
+## 目录（固定）
+
+```
+apps/
+  api/          # FastAPI：业务、鉴权、索引 worker、RAG Agent；含 prompts/
+  web/          # 独立 Next.js（App Router）前端
+deploy/         # Caddy/nginx、compose
+scripts/        # 运维与本地辅助脚本（非业务热路径）
+docs/specs/     # Feature Spec
+.cursor/rules/  # 本规则
+```
+
+- 新代码放入对应 app；禁止在仓库根散落业务包。
+- Agent 提示词放 `apps/api/prompts/`（版本化文本），由 `agent/` 加载；不要塞进根目录 `scripts/`。
+- Phase 1 对象存储：本地目录 `apps/api/var/storage/`（gitignore）；路径经配置注入，业务代码不写死机器绝对路径。
+- 索引任务：DB 表 `index_job` + `apps/api` 内 worker 进程消费（Phase 1 不用 Celery/独立消息中间件）。
+
+## 反代与 cookie 同站
+
+- 对外：`lxzxai.com` / `{subdomain}.lxzxai.com` → `apps/web`。
+- 浏览器调后端只走同源前缀 **`/backend/*`** → 反代到 FastAPI；禁止前端写死后端内网 host:port。
+- Cookie `Domain=.lxzxai.com` 依赖上述同站部署；本地用 Caddy/nginx 或 Next rewrites 模拟 `/backend`。
+
+## 配置
+
+- 密钥与连接串仅环境变量；提交 `.env.example`（无真值），不提交 `.env`。
+- 本地多子域：`/etc/hosts` 解析 `lxzxai.com` 与 `*.lxzxai.com`（或文档约定的等价方式）；测试可注入 Host header。

@@ -1,0 +1,14 @@
+---
+description: FastAPI 后端约定（路由、DI、DB、LLM 客户端）
+globs: "**/*.py"
+alwaysApply: false
+---
+
+# FastAPI 约定
+
+1. FastAPI + Pydantic v2 定义请求/响应模型；路由按域拆分（auth / tenants / documents / conversations / agent）。
+2. 用依赖注入提供 `current_user` / `current_tenant`（从 Host + cookie 解析）；业务层不直接读裸 header 拼租户。
+3. DB：SQLAlchemy 2.x（或等价 async）；迁移用 Alembic；每表含 `createtime` / `lastmodifiedtime`，并用共用 `BEFORE UPDATE` trigger 维护（见 `00-constraints` §3.1）。
+4. 内部检索 / 索引任务与对外 HTTP 分离；不暴露 Phase 2 的 `{subdomain}.lxzxai.com/api` 网关。
+5. QWen / embedding 客户端集中封装；LLM 超时 60s（F06）；可测处通过依赖注入 mock。
+6. 密码哈希与会话签发集中在 auth 模块；禁止在路由里散落复制安全逻辑。

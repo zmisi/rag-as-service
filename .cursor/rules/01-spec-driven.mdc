@@ -1,0 +1,12 @@
+---
+description: Spec 驱动实现流程；以 Feature Test Cases 为唯一验收标准
+alwaysApply: true
+---
+
+# Spec 驱动工作流
+
+1. 实现任何 Feature 前：确认 Feature Status 为 `approved` 或 `done`（见 `00-constraints` §8）；已遵守 `00-constraints`（已注入）；再读对应 Phase 的 Feature List → 该 Feature Spec。
+2. **唯一验收标准** = 该 Feature Spec 中的 Test Cases 全部通过；无 Test Case 的行为不算范围。
+3. 新建 Feature Spec 时复制 [`docs/specs/_TEMPLATE.md`](../../docs/specs/_TEMPLATE.md) 到 `phaseN/features/`。
+4. 改行为时先改 Spec / Test Cases，再改代码（Spec-first）。
+5. Phase 索引：[`docs/specs/01-phase-list.md`](../../docs/specs/01-phase-list.md)；Phase 1 Feature List：[`docs/specs/phase1/01-feature-list.md`](../../docs/specs/phase1/01-feature-list.md)。

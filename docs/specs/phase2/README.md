@@ -2,7 +2,7 @@
 
 本目录**不进入 Phase 1 验收**。下列能力仅占位，避免实现时误做进 Phase 1。
 
-Phase 1 Spec 见 [../phase1/](../phase1/)。根本约束见 [../00-constraints.md](../00-constraints.md)；Phase 索引见 [../01-phase-list.md](../01-phase-list.md)。
+Phase 1 Spec 见 [../phase1/](../phase1/)。根本约束见 [00-constraints.mdc](../../../.cursor/rules/00-constraints.mdc)；Phase 索引见 [../01-phase-list.md](../01-phase-list.md)。
 
 ## Phase 1.5 — 微信登录
 
@@ -18,6 +18,6 @@ Phase 1 Spec 见 [../phase1/](../phase1/)。根本约束见 [../00-constraints.m
 
 ## Phase 2 — 对外 API 网关
 
-- 表面：`{slug}.lxzxai.com/api`
+- 表面：`{subdomain}.lxzxai.com/api`
 - 用途：租户将 RAG/能力整合进自有系统（鉴权、限流、稳定契约）。
 - Phase 1 不暴露此路径；内部 F04 search / F06 调用不算对外 API。

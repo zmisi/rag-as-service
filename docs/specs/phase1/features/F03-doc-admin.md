@@ -1,6 +1,6 @@
 # F03 文档管理
 
-> `{slug}.lxzxai.com/admin`：上传与管理文档；状态 draft → saved → verified → published；tag、版本、多文件类型。
+> `{subdomain}.lxzxai.com/admin`：上传与管理文档；状态 draft → saved → verified → published；tag、版本、多文件类型。
 
 
 | 字段 | 值 |
@@ -65,7 +65,7 @@ flowchart TD
 |------|----------------|
 | document | `id`, `tenant_id`, `title`, `tag`, `status`, `version`, `created_by`, `deleted_at` |
 
-时间戳列 `createtime` / `lastmodifiedtime` 见 [00-constraints.md](../../00-constraints.md) §3.1。
+时间戳列 `createtime` / `lastmodifiedtime` 见 [00-constraints.mdc](../../../../.cursor/rules/00-constraints.mdc) §3.1。
 | document_file | `document_id`, `storage_key`, `filename`, `content_type`, `size_bytes` |
 | status | `draft` \| `saved` \| `verified` \| `published` |
 
