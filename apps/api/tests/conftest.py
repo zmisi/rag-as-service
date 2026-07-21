@@ -3,18 +3,18 @@ from collections.abc import Generator
 from uuid import UUID
 
 import pytest
-from fastapi import Header, HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, delete, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from rag_api.api import create_app
-from rag_api.api.dependencies import get_current_user
 from rag_api.api.dependencies.db import get_db
 from rag_api.config import get_settings
 from rag_api.db.migrate import upgrade_head
 from rag_api.db.models import Conversation, Message, Tenant, TenantMember, User
+from rag_api.domain.identity.password import hash_password
+from tests.helpers import issue_session_for_user, set_client_session_cookie, tenant_host_headers
 
 
 def _database_url() -> str | None:
@@ -95,12 +95,17 @@ def tenants(db: Session) -> dict:
     db.execute(delete(Conversation))
     db.commit()
 
+    password_hash = hash_password("password123")
+
     def ensure_tenant(subdomain: str, email: str) -> tuple[Tenant, User]:
         tenant = db.scalar(select(Tenant).where(Tenant.subdomain == subdomain))
         user = db.scalar(select(User).where(User.email == email))
         if user is None:
-            user = User(email=email, password_hash="test-hash")
+            user = User(email=email, password_hash=password_hash)
             db.add(user)
+            db.flush()
+        elif user.password_hash != password_hash:
+            user.password_hash = password_hash
             db.flush()
         if tenant is None:
             tenant = Tenant(subdomain=subdomain, display_name=subdomain)
@@ -130,43 +135,40 @@ def tenants(db: Session) -> dict:
 
 
 @pytest.fixture
-def client_a(app, tenants: dict, db: Session) -> Generator[TestClient, None, None]:
-    """F05 TestClient; auth via X-Test-User-Id stub."""
+def login_as(db: Session):
+    def _login_as(user: User, *, subdomain: str) -> str:
+        return issue_session_for_user(db, user.id)
 
-    def _override_user(
-        x_test_user_id: str | None = Header(default=None, alias="X-Test-User-Id"),
-    ) -> User:
-        if not x_test_user_id:
-            raise HTTPException(status_code=401, detail="Not authenticated")
-        user = db.get(User, UUID(x_test_user_id))
-        if user is None:
-            raise HTTPException(status_code=401, detail="Unknown user")
-        return user
+    return _login_as
+
+
+@pytest.fixture
+def client_a(app, tenants: dict, db: Session) -> Generator[TestClient, None, None]:
+    """F05 TestClient with cookie auth for tenant-a."""
 
     def _override_db() -> Generator[Session, None, None]:
         yield db
 
-    app.dependency_overrides[get_current_user] = _override_user
     app.dependency_overrides[get_db] = _override_db
+    token = issue_session_for_user(db, tenants["user_a"].id)
     with TestClient(app) as c:
-        c.headers.update(
-            {
-                "Host": "tenant-a.lxzxai.com",
-                "X-Test-User-Id": str(tenants["user_a"].id),
-            }
+        set_client_session_cookie(
+            c,
+            token,
+            host=tenant_host_headers("tenant-a")["Host"],
         )
         yield c
     app.dependency_overrides.clear()
 
 
 @pytest.fixture
-def switch_to_b(client_a: TestClient, tenants: dict):
+def switch_to_b(client_a: TestClient, tenants: dict, db: Session):
     def _switch() -> TestClient:
-        client_a.headers.update(
-            {
-                "Host": "tenant-b.lxzxai.com",
-                "X-Test-User-Id": str(tenants["user_b"].id),
-            }
+        token = issue_session_for_user(db, tenants["user_b"].id)
+        set_client_session_cookie(
+            client_a,
+            token,
+            host=tenant_host_headers("tenant-b")["Host"],
         )
         return client_a
 

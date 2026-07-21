@@ -5,18 +5,19 @@
 
 | 字段 | 值 |
 |------|-----|
-| **Status** | `review` |
+| **Status** | `done` |
 | **Owner** | |
 | **Approved by** | |
-| **Approved at** | |
+| **Approved at** | 2026-07-21 |
 
 ## 范围
 
 - Email + 密码登录（主站 `lxzxai.com`）
-- 登出
+- 登出（主站或 `{subdomain}.lxzxai.com`）
 - 会话 cookie：`Domain=.lxzxai.com`，覆盖主站与 `{subdomain}.lxzxai.com`
 - 未登录访问 `/admin` 或需鉴权聊天 API 时拒绝或重定向登录
 - 租户站请求必须解析 Host → tenant，且当前用户为该租户成员
+- 租户站 **不得** 提供注册页：`{subdomain}.lxzxai.com/register` 不可访问（重定向至主站）
 
 ## 非范围
 
@@ -43,7 +44,7 @@ flowchart TD
   J -->|否| K[403]
   J -->|是| L[进入 admin]
 
-  M[POST /logout] --> N[清除会话 cookie]
+  M[POST /logout 主站或 subdomain] --> N[清除会话 cookie]
   N --> O[后续请求未认证]
 ```
 
@@ -51,11 +52,12 @@ flowchart TD
 
 1. 登录入口在 `lxzxai.com/login`；校验 email（小写）+ 密码哈希。
 2. 会话 cookie：`Domain=.lxzxai.com`；`Secure`；`HttpOnly`；`SameSite=Lax`（或等价可测配置）。
-3. **登录成功**后 HTTP 重定向到 `https://{subdomain}.lxzxai.com`（租户根路径 / 聊天入口），**不是** `/admin`。
+3. **登录成功**后 HTTP 重定向到 `https://{subdomain}.lxzxai.com`（租户根路径，聊天入口），**不得**带 `/admin` 路径。
 4. 在 `{subdomain}.lxzxai.com` 与 `/admin` 使用同一会话；不要求二次登录。
 5. Host 上的 subdomain 与会话用户的租户成员关系必须匹配，否则 403（防止拿 A 租户 cookie 操作 B 租户）。
-6. 登出使会话失效；之后访问需鉴权资源须重新登录。
+6. 登出入口：`lxzxai.com` 或 `{subdomain}.lxzxai.com` 均可 `POST /logout`；使服务端 session 失效并清除 cookie；之后访问需鉴权资源须重新登录。
 7. 错误响应不泄露「email 是否存在」以外的多余信息：统一「邮箱或密码错误」。
+8. 注册入口仅在主站（F01）；在 `{subdomain}.lxzxai.com` 访问 `/register` 时 **不得** 渲染租户站注册页，应 **302 重定向** 至 `https://lxzxai.com/register`（本地开发保留当前端口）。
 
 ## 数据与边界
 
@@ -77,3 +79,5 @@ flowchart TD
 | F02-T05 | Given 用户为 tenant-A 成员 When 带会话访问 tenant-B Host `/admin` | Then 403 | api |
 | F02-T06 | Given 已登录 When 登出后再访 `/admin` | Then 未认证 | e2e |
 | F02-T07 | Given 主站登录成功 When 请求 `{subdomain}.lxzxai.com` 需鉴权 API | Then 同一 cookie 通过鉴权，无需再登录 | api |
+| F02-T08 | Given 已登录 When 在 `{subdomain}.lxzxai.com` POST logout | Then 204；session 失效；cookie 清除；后续鉴权请求未认证 | api |
+| F02-T09 | Given 租户 Host When GET `/register` | Then 302 至 `https://lxzxai.com/register`（非租户页）；不得 200 渲染注册表单 | e2e |

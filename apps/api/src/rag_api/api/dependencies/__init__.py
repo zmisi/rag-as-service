@@ -2,7 +2,9 @@ from rag_api.api.dependencies.auth import (
     AuthContext,
     get_current_tenant,
     get_current_user,
+    get_session_user,
     parse_subdomain,
+    require_known_host,
     require_tenant_member,
 )
 from rag_api.api.dependencies.db import get_db
@@ -13,7 +15,9 @@ __all__ = [
     "get_current_tenant",
     "get_current_user",
     "get_db",
+    "get_session_user",
     "parse_subdomain",
     "require_apex_host",
+    "require_known_host",
     "require_tenant_member",
 ]
