@@ -57,6 +57,12 @@ class Settings(BaseSettings):
         default=_API_ROOT / "var" / "storage",
         alias="STORAGE_ROOT",
     )
+    qwen_api_key: str = Field(default="", alias="QWEN_API_KEY")
+    qwen_base_url: str = Field(
+        default="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        alias="QWEN_BASE_URL",
+    )
+    qwen_model: str = Field(default="qwen-plus", alias="QWEN_MODEL")
 
 
 @lru_cache

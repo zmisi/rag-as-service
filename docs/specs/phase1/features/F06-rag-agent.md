@@ -6,7 +6,7 @@
 
 | 字段 | 值 |
 |------|-----|
-| **Status** | `approved` |
+| **Status** | `done` |
 | **Owner** | |
 | **Approved by** | |
 | **Approved at** | |

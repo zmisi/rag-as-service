@@ -39,10 +39,22 @@ class MessageOut(BaseModel):
     id: UUID
     conversation_id: UUID
     tenant_id: UUID
-    role: Literal["user", "assistant", "system", "tool"]
+    role: Literal["user", "assistant", "system", "tool", "summary"]
     content: str
     meta: Optional[dict[str, Any]] = None
+    agent_run_id: Optional[UUID] = None
     create_at: datetime
     update_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class TurnReply(BaseModel):
+    """F06: user message + assistant reply from Agent Loop."""
+
+    user: MessageOut
+    assistant: MessageOut
+    agent_run_id: UUID
+    used_search: bool
+    status: Literal["completed", "truncated", "error"]
+    conversation_title: Optional[str] = None

@@ -6,12 +6,55 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from rag_api.db.models import Conversation, Message
 
 DEFAULT_TITLE = "新会话"
+AUTO_TITLE_MAX_LEN = 60
+
+
+def derive_title_from_message(content: str, max_len: int = AUTO_TITLE_MAX_LEN) -> str:
+    """Summarize first user message as conversation title (F05)."""
+    text = " ".join(content.strip().split())
+    if not text:
+        return DEFAULT_TITLE
+    if len(text) <= max_len:
+        return text
+    trimmed = text[: max_len - 1].rstrip()
+    return f"{trimmed}…"
+
+
+def maybe_set_title_from_first_message(
+    db: Session,
+    *,
+    conversation_id: UUID,
+    tenant_id: UUID,
+    user_id: UUID,
+    user_content: str,
+) -> str | None:
+    """When title is still default, set it from the first user message."""
+    conv = get_owned_conversation(
+        db, conversation_id=conversation_id, tenant_id=tenant_id, user_id=user_id
+    )
+    if conv.title != DEFAULT_TITLE:
+        return None
+    user_count = db.scalar(
+        select(func.count())
+        .select_from(Message)
+        .where(
+            Message.conversation_id == conversation_id,
+            Message.tenant_id == tenant_id,
+            Message.role == "user",
+        )
+    )
+    if user_count != 1:
+        return None
+    conv.title = derive_title_from_message(user_content)
+    db.commit()
+    db.refresh(conv)
+    return conv.title
 
 
 def create_conversation(

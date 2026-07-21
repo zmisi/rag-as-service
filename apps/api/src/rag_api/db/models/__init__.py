@@ -1,3 +1,5 @@
+from rag_api.db.models.agent_run import AgentRun
+from rag_api.db.models.agent_run_step import AgentRunStep
 from rag_api.db.models.conversation import Conversation
 from rag_api.db.models.document import Document
 from rag_api.db.models.document_file import DocumentFile
@@ -10,6 +12,8 @@ from rag_api.db.models.user import User
 
 __all__ = [
     "ROLE_OWNER",
+    "AgentRun",
+    "AgentRunStep",
     "Conversation",
     "Document",
     "DocumentFile",

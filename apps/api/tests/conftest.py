@@ -1,6 +1,5 @@
 import os
 from collections.abc import Generator
-from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,10 +8,14 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from rag_api.api import create_app
+from rag_api.api.dependencies import get_knowledge_searcher, get_llm_client
 from rag_api.api.dependencies.db import get_db
+from rag_api.clients.llm import LlmResult, ScriptedLlmClient
 from rag_api.config import get_settings
 from rag_api.db.migrate import upgrade_head
 from rag_api.db.models import (
+    AgentRun,
+    AgentRunStep,
     Conversation,
     Document,
     DocumentFile,
@@ -23,6 +26,7 @@ from rag_api.db.models import (
     User,
 )
 from rag_api.domain.identity.password import hash_password
+from rag_api.indexing.search import FakeKnowledgeSearcher
 from tests.helpers import issue_session_for_user, set_client_session_cookie, tenant_host_headers
 
 
@@ -89,7 +93,7 @@ def api_client(app, db_session: Session) -> Generator[TestClient, None, None]:
 
 @pytest.fixture
 def db(db_engine: Engine) -> Generator[Session, None, None]:
-    """F05-style: real commits (services call session.commit())."""
+    """F05/F06 style: real commits (services call session.commit())."""
     session = sessionmaker(bind=db_engine, expire_on_commit=False)()
     try:
         yield session
@@ -99,8 +103,10 @@ def db(db_engine: Engine) -> Generator[Session, None, None]:
 
 @pytest.fixture
 def tenants(db: Session) -> dict:
-    """Seed two tenants with owner members; wipe conversation data each test."""
+    """Seed two tenants with owner members; wipe conversation/agent data each test."""
+    db.execute(delete(AgentRunStep))
     db.execute(delete(Message))
+    db.execute(delete(AgentRun))
     db.execute(delete(Conversation))
     db.execute(delete(IndexJob))
     db.execute(delete(DocumentFile))
@@ -147,21 +153,43 @@ def tenants(db: Session) -> dict:
 
 
 @pytest.fixture
-def login_as(db: Session):
-    def _login_as(user: User, *, subdomain: str) -> str:
-        return issue_session_for_user(db, user.id)
-
-    return _login_as
+def fake_searcher() -> FakeKnowledgeSearcher:
+    return FakeKnowledgeSearcher()
 
 
 @pytest.fixture
-def client_a(app, tenants: dict, db: Session) -> Generator[TestClient, None, None]:
-    """F05 TestClient with cookie auth for tenant-a."""
+def scripted_llm() -> ScriptedLlmClient:
+    """Default: endless polite finals so F05 message posts work without QWen."""
+
+    class _Endless(ScriptedLlmClient):
+        def complete(self, messages, tools=None):  # type: ignore[no-untyped-def]
+            self.calls.append({"messages": messages, "tools": tools})
+            if self._script:
+                item = self._script.pop(0)
+                if isinstance(item, BaseException):
+                    raise item
+                return item
+            return LlmResult(content="好的。")
+
+    return _Endless([])
+
+
+@pytest.fixture
+def client_a(
+    app,
+    tenants: dict,
+    db: Session,
+    fake_searcher: FakeKnowledgeSearcher,
+    scripted_llm: ScriptedLlmClient,
+) -> Generator[TestClient, None, None]:
+    """F05/F06 TestClient with cookie auth for tenant-a and mocked LLM/search."""
 
     def _override_db() -> Generator[Session, None, None]:
         yield db
 
     app.dependency_overrides[get_db] = _override_db
+    app.dependency_overrides[get_llm_client] = lambda: scripted_llm
+    app.dependency_overrides[get_knowledge_searcher] = lambda: fake_searcher
     token = issue_session_for_user(db, tenants["user_a"].id)
     with TestClient(app) as c:
         set_client_session_cookie(

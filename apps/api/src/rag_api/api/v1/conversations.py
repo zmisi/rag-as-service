@@ -1,25 +1,40 @@
-"""F05 conversation routes."""
+"""F05 conversation routes (+ F06 Agent Loop on POST user message)."""
 
 from __future__ import annotations
 
+import json
+import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from rag_api.api.dependencies import AuthContext, require_tenant_member
+from rag_api.agent.service import run_user_turn
+from rag_api.api.dependencies import (
+    AuthContext,
+    get_db,
+    get_knowledge_searcher,
+    get_llm_client,
+    require_tenant_member,
+)
 from rag_api.api.schemas.conversations import (
     ConversationCreate,
     ConversationOut,
     ConversationUpdate,
     MessageCreate,
     MessageOut,
+    TurnReply,
 )
-from rag_api.db.session import get_db
+from rag_api.clients.llm import LlmClient
+from rag_api.db.session import get_session_factory
+from rag_api.indexing.search import KnowledgeSearcher
 from rag_api.services import conversations as conv_svc
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
+_STREAM_EXECUTOR = ThreadPoolExecutor(max_workers=8)
 
 
 @router.post("", response_model=ConversationOut, status_code=status.HTTP_201_CREATED)
@@ -125,22 +140,113 @@ def get_messages(
 
 @router.post(
     "/{conversation_id}/messages",
-    response_model=MessageOut,
+    response_model=TurnReply,
     status_code=status.HTTP_201_CREATED,
 )
 def post_message(
     conversation_id: UUID,
     body: MessageCreate,
+    response: Response,
     db: Session = Depends(get_db),
     auth: AuthContext = Depends(require_tenant_member),
-) -> MessageOut:
-    msg = conv_svc.add_message(
+    llm: LlmClient = Depends(get_llm_client),
+    searcher: KnowledgeSearcher = Depends(get_knowledge_searcher),
+) -> TurnReply:
+    if body.role != "user":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Only role=user triggers Agent Loop; clients must send user messages",
+        )
+    turn = run_user_turn(
         db,
         conversation_id=conversation_id,
         tenant_id=auth.tenant_id,
         user_id=auth.user_id,
-        role=body.role,
         content=body.content,
-        meta=body.meta,
+        llm=llm,
+        searcher=searcher,
     )
-    return MessageOut.model_validate(msg)
+    # Expose server-side wall time so the browser can compare RTT vs processing.
+    response.headers["Server-Timing"] = f"turn;dur={turn.server_ms:.1f}"
+    response.headers["X-Turn-Duration-Ms"] = f"{turn.server_ms:.1f}"
+    return _turn_to_reply(turn)
+
+
+@router.post("/{conversation_id}/messages/stream")
+def post_message_stream(
+    conversation_id: UUID,
+    body: MessageCreate,
+    auth: AuthContext = Depends(require_tenant_member),
+    llm: LlmClient = Depends(get_llm_client),
+    searcher: KnowledgeSearcher = Depends(get_knowledge_searcher),
+) -> StreamingResponse:
+    if body.role != "user":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Only role=user triggers Agent Loop; clients must send user messages",
+        )
+    session_factory = get_session_factory()
+
+    def _run_turn():
+        db = session_factory()
+        try:
+            return run_user_turn(
+                db,
+                conversation_id=conversation_id,
+                tenant_id=auth.tenant_id,
+                user_id=auth.user_id,
+                content=body.content,
+                llm=llm,
+                searcher=searcher,
+            )
+        finally:
+            db.close()
+
+    future = _STREAM_EXECUTOR.submit(_run_turn)
+
+    def _events():
+        started = time.perf_counter()
+        yield _sse("started", {"conversation_id": str(conversation_id)})
+        while not future.done():
+            elapsed_ms = (time.perf_counter() - started) * 1000.0
+            yield _sse(
+                "progress",
+                {
+                    "stage": "agent_loop",
+                    "elapsed_ms": round(elapsed_ms, 1),
+                },
+            )
+            time.sleep(0.5)
+        try:
+            turn = future.result()
+        except Exception as exc:  # noqa: BLE001
+            yield _sse("error", {"message": str(exc)})
+            return
+        payload = _turn_to_reply(turn).model_dump(mode="json")
+        payload["server_ms"] = round(turn.server_ms, 1)
+        yield _sse("done", payload)
+
+    return StreamingResponse(
+        _events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+def _sse(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+def _turn_to_reply(turn) -> TurnReply:
+    return TurnReply(
+        user=MessageOut.model_validate(turn.user),
+        assistant=MessageOut.model_validate(turn.assistant),
+        agent_run_id=turn.agent_run.id,
+        used_search=turn.agent_run.used_search,
+        status=turn.agent_run.status,  # type: ignore[arg-type]
+        conversation_title=turn.conversation_title,
+    )
