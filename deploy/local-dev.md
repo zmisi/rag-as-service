@@ -53,6 +53,7 @@ docker compose -f deploy/docker-compose.yml up --build
 
 - 注册：http://lxzxai.com:3000/register
 - 登录：http://lxzxai.com:3000/login
+- 文档管理：http://{subdomain}.lxzxai.com:3000/admin（上传 → 提交审核 → 发布）
 
 登录成功后跳转到 `https://{subdomain}.lxzxai.com/`（聊天入口）；注册成功后跳转到 `/admin`。
 

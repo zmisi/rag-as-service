@@ -45,6 +45,7 @@ services:
       - "${API_PORT:-8000}:8000"
     volumes:
       - ../apps/api/src:/app/src
+      - ../apps/api/pyproject.toml:/app/pyproject.toml
       - ../apps/api/alembic:/app/alembic
       - ../apps/api/alembic.ini:/app/alembic.ini
     depends_on:

@@ -67,7 +67,7 @@ flowchart TD
 | ID | 步骤 | 期望 | 类型 |
 |----|------|------|------|
 | F04-T01 | Given 文档 publish When 索引 job 跑完 | Then job=succeeded；存在 active chunks；embedding 非空 | api |
-| F04-T02 | Given status=`verified` 未 publish When 强行请求索引 | Then 不产生 active chunks | api |
+| F04-T02 | Given status=`review` 未 publish When 强行请求索引 | Then 不产生 active chunks | api |
 | F04-T03 | Given tenant-A 已索引文档 When tenant-B search 相同 query | Then 0 条 A 的 chunk | api |
 | F04-T04 | Given 空 txt publish When 索引 | Then job=succeeded；0 chunks；search 无命中 | api |
 | F04-T05 | Given v1.0 已索引 When v1.1 索引成功 | Then 仅 v1.1 chunks active；search 不返回 v1.0 | api |

@@ -246,7 +246,7 @@ erDiagram
 | `tenant_id` | `uuid` | NOT NULL FK → `tenants.id` | 所属租户（隔离键） |
 | `title` | `text` | NOT NULL DEFAULT '' | 标题；verify 时必填非空 |
 | `tag` | `text` | NOT NULL DEFAULT '' | 分类：`news`/`sop`/`best_practice`/`knowledge_base`/`faq` |
-| `status` | `text` | NOT NULL | `draft`→`saved`→`verified`→`published` |
+| `status` | `text` | NOT NULL | `draft`→`review`→`published` |
 | `version` | `text` | NOT NULL DEFAULT '0.0' | 当前版本；首次 publish=`1.0`，其后 minor+0.1 |
 | `created_by` | `uuid` | NOT NULL FK → `users.id` | 创建人 |
 | `deleted_at` | `timestamp` | NULL | 软删除；非空则不可见且索引须失效 |
