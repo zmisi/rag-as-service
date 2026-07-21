@@ -32,7 +32,7 @@ def test_f05_t01_create_conversation_appears_in_default_list(client_a: TestClien
 
 
 def test_f05_t02_messages_ordered_by_create_at(client_a: TestClient) -> None:
-    """F05-T02: GET history returns 3 messages ordered by create_at ascending."""
+    """F05-T02: history ordered by create_at; each user turn also yields assistant (F06)."""
     conv_id = client_a.post("/v1/conversations", json={"title": "hist"}).json()["id"]
     for content in ("m1", "m2", "m3"):
         r = client_a.post(
@@ -40,13 +40,17 @@ def test_f05_t02_messages_ordered_by_create_at(client_a: TestClient) -> None:
             json={"role": "user", "content": content},
         )
         assert r.status_code == 201
+        body = r.json()
+        assert body["user"]["content"] == content
+        assert body["assistant"]["role"] == "assistant"
         time.sleep(0.02)
 
     hist = client_a.get(f"/v1/conversations/{conv_id}/messages")
     assert hist.status_code == 200
     messages = hist.json()
-    assert len(messages) == 3
-    assert [m["content"] for m in messages] == ["m1", "m2", "m3"]
+    assert len(messages) == 6
+    users = [m for m in messages if m["role"] == "user"]
+    assert [m["content"] for m in users] == ["m1", "m2", "m3"]
     times = [datetime.fromisoformat(m["create_at"]) for m in messages]
     assert times == sorted(times)
 

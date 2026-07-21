@@ -140,4 +140,4 @@ cd apps/web && npm install && npm run dev
 
 6. 打开：`http://tenant-a.lxzxai.com:3000/chat`
 
-开发态鉴权用 `X-Test-User-Id`（`AUTH_STUB_ENABLED`）；正式 cookie 会话见 F02。Agent 回复见 F06——当前聊天页只落库 user 消息。
+开发态鉴权用 `X-Test-User-Id`（`AUTH_STUB_ENABLED`）；正式 cookie 会话见 F02。发送用户消息后，API 同步跑 F06 Agent Loop 并返回 `TurnReply`（user + assistant）。本地未配置 `QWEN_API_KEY` 时，在 `AUTH_STUB_ENABLED=true` 下会使用内置 DevStub LLM（非真实 QWen）。

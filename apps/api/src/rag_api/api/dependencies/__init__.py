@@ -1,3 +1,4 @@
+from rag_api.api.dependencies.agent import get_knowledge_searcher, get_llm_client
 from rag_api.api.dependencies.auth import (
     AuthContext,
     get_current_tenant,
@@ -16,6 +17,8 @@ __all__ = [
     "get_current_user",
     "get_db",
     "get_session_user",
+    "get_knowledge_searcher",
+    "get_llm_client",
     "parse_subdomain",
     "require_apex_host",
     "require_known_host",

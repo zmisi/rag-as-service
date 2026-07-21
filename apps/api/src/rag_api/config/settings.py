@@ -53,6 +53,12 @@ class Settings(BaseSettings):
     cookie_secure: bool = Field(default=False, alias="COOKIE_SECURE")
     # Dev-only: accept X-Test-User-Id instead of F02 cookie auth (F05 UI).
     auth_stub_enabled: bool = Field(default=False, alias="AUTH_STUB_ENABLED")
+    qwen_api_key: str = Field(default="", alias="QWEN_API_KEY")
+    qwen_base_url: str = Field(
+        default="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        alias="QWEN_BASE_URL",
+    )
+    qwen_model: str = Field(default="qwen-plus", alias="QWEN_MODEL")
 
 
 @lru_cache

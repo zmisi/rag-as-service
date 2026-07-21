@@ -11,13 +11,20 @@ import {
   deleteConversation,
   listConversations,
   listMessages,
-  postMessage,
+  postMessageStream,
   renameConversation,
   unarchiveConversation,
   type Conversation,
   type ConversationStatus,
   type Message,
 } from "@/lib/api";
+
+function newTempId(prefix: string): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `${prefix}-${crypto.randomUUID()}`;
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
 
 export function ChatWorkspace() {
   const [statusFilter, setStatusFilter] =
@@ -154,10 +161,70 @@ export function ChatWorkspace() {
   async function handleSend(content: string) {
     if (!selectedId) return;
     setError(null);
+    const t0 = performance.now();
+    const nowIso = new Date().toISOString();
+    const tempUserId = newTempId("temp-user");
+    const tempAssistantId = newTempId("temp-assistant");
+    const tempUser: Message = {
+      id: tempUserId,
+      conversation_id: selectedId,
+      tenant_id: selected?.tenant_id ?? "",
+      role: "user",
+      content,
+      create_at: nowIso,
+      update_at: nowIso,
+      meta: null,
+      agent_run_id: null,
+    };
+    const tempAssistant: Message = {
+      id: tempAssistantId,
+      conversation_id: selectedId,
+      tenant_id: selected?.tenant_id ?? "",
+      role: "assistant",
+      content: "思考中…",
+      create_at: nowIso,
+      update_at: nowIso,
+      meta: null,
+      agent_run_id: null,
+    };
+    setMessages((prev) => [...prev, tempUser, tempAssistant]);
     try {
-      const msg = await postMessage(selectedId, content);
-      setMessages((prev) => [...prev, msg]);
+      const turn = await postMessageStream(selectedId, content, {
+        onProgress: (_stage, elapsedMs) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === tempAssistantId
+                ? { ...m, content: `思考中… ${(elapsedMs / 1000).toFixed(1)}s` }
+                : m,
+            ),
+          );
+        },
+      });
+      const afterFetch = performance.now();
+      setMessages((prev) =>
+        prev.flatMap((m) => {
+          if (m.id === tempUserId) return [turn.user];
+          if (m.id === tempAssistantId) return [turn.assistant];
+          return [m];
+        }),
+      );
+      if (turn.conversation_title) {
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === selectedId
+              ? { ...c, title: turn.conversation_title as string }
+              : c,
+          ),
+        );
+      }
+      console.info(
+        `[timing] chat.ui apply_ms=${(performance.now() - afterFetch).toFixed(1)} ` +
+          `handle_send_total_ms=${(performance.now() - t0).toFixed(1)}`,
+      );
     } catch (e) {
+      setMessages((prev) =>
+        prev.filter((m) => m.id !== tempAssistantId && m.id !== tempUserId),
+      );
       setError(e instanceof Error ? e.message : "发送失败");
       throw e;
     }
@@ -190,7 +257,7 @@ export function ChatWorkspace() {
             </header>
             <MessageList
               messages={messages}
-              emptyHint="尚无消息。发送一条用户消息（Agent 回复见 F06）。"
+              emptyHint="尚无消息。发送一条即可开始对话。"
             />
             <Composer
               disabled={!canCompose}
