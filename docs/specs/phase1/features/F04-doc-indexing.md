@@ -22,7 +22,7 @@
 ## 非范围
 
 - Admin UI 与状态机（F03）
-- Agent 对话与意图（F06）
+- Agent 对话与 Agent Loop（F06）
 - 未 publish 文档的预览索引
 
 ## Flow

@@ -132,7 +132,7 @@ erDiagram
     uuid id PK
     uuid conversation_id FK
     uuid tenant_id FK
-    text intent
+    bool used_search
   }
   agent_run_steps {
     uuid id PK
@@ -371,7 +371,7 @@ erDiagram
 
 ### 4.11 `agent_runs` — Agent 运行
 
-**表注释**：一次用户提问触发的 Agent 执行记录；用于意图、步数、终态可测查询。
+**表注释**：一次用户提问触发的 Agent 执行记录；用于是否检索、步数、终态可测查询。无前置意图分类。
 
 | 字段 | 类型 | 约束 | 注释 |
 |------|------|------|------|
@@ -379,7 +379,7 @@ erDiagram
 | `tenant_id` | `uuid` | NOT NULL FK → `tenants.id` | 所属租户 |
 | `conversation_id` | `uuid` | NOT NULL FK → `conversations.id` | 所属会话 |
 | `user_message_id` | `uuid` | NULL FK → `messages.id` | 触发本轮的用户消息 |
-| `intent` | `text` | NOT NULL | `rag_search`/`chitchat`/`clarify` |
+| `used_search` | `boolean` | NOT NULL DEFAULT false | 本轮是否至少执行过一次 `search_knowledge`（观测字段） |
 | `status` | `text` | NOT NULL | `running`/`completed`/`truncated`/`error` |
 | `step_count` | `int` | NOT NULL DEFAULT 0 | 已执行模型步数（≤ MAX_STEPS=5） |
 | `error` | `text` | NULL | 错误摘要 |

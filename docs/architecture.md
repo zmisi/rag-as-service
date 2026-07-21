@@ -65,8 +65,7 @@ apps/api/
 ├── alembic/ + alembic.ini
 ├── prompts/                 # Agent / 系统提示词（版本化文本，非埋在代码字符串里）
 │   ├── system/              # 默认 system prompt、租户可覆盖时的基线
-│   ├── rules/               # 「只依据检索结果作答」等规则片段
-│   └── intent/              # 意图分类等（若拆文件）
+│   └── rules/               # 「只依据检索结果作答」等规则片段
 ├── src/rag_api/
 │   ├── main.py              # ASGI 入口
 │   ├── worker.py            # index_job 消费入口
@@ -77,7 +76,7 @@ apps/api/
 │   ├── repositories/        # 唯一 DB 访问（查询强制 tenant_id）
 │   ├── services/            # 用例编排
 │   ├── indexing/            # parse / chunk / embed（供 worker）
-│   ├── agent/               # intent / loop / tools；加载 prompts/
+│   ├── agent/               # loop / tools / context；加载 prompts/（无前置意图分类）
 │   ├── clients/             # QWen、embedding（可 mock）
 │   └── api/
 │       ├── app.py

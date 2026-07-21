@@ -10,7 +10,7 @@ Phase 索引见 [../01-phase-list.md](../01-phase-list.md)。
 | F03 | 文档管理 | `review` | `{subdomain}.lxzxai.com/admin` | F02 | [F03-doc-admin.md](features/F03-doc-admin.md) |
 | F04 | 文档索引 | `review` | 后台 / 租户隔离 | F03 | [F04-doc-indexing.md](features/F04-doc-indexing.md) |
 | F05 | 会话列表与归档 | `done` | `{subdomain}.lxzxai.com` | F02 | [F05-conversations.md](features/F05-conversations.md) |
-| F06 | RAG Agent | `review` | `{subdomain}.lxzxai.com` | F04, F05 | [F06-rag-agent.md](features/F06-rag-agent.md) |
+| F06 | RAG Agent | `approved` | `{subdomain}.lxzxai.com` | F04, F05 | [F06-rag-agent.md](features/F06-rag-agent.md) |
 
 ```mermaid
 flowchart LR

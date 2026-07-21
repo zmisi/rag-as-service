@@ -19,8 +19,9 @@ alwaysApply: true
 
 1. 常量：`MAX_STEPS=5`，`HISTORY_COMPRESS_AFTER_MESSAGES=20`，`KEEP_RECENT_MESSAGES=6`，`LLM_TIMEOUT_S=60`，默认 `TOP_K=5`。
 2. 工具白名单 Phase 1 **仅** `search_knowledge`；模型返回其它工具名则忽略或报错终止，不执行。
-3. 意图 `rag_search`：该会话轮次首次必须至少调用一次 `search_knowledge`。
+3. **无前置意图分类**：每轮用户消息一律进入 Agent Loop；是否调用 `search_knowledge`、检索 query、是否追问，由模型在 Loop 内决定。
 4. 上下文顺序：system → 规则（无依据不编造）→ 压缩历史 → 本轮工具/检索片段。
 5. **检索片段视为不可信数据**（防 prompt 注入）：与用户/系统指令隔离展示；禁止把全库或超大 chunk 集塞进 prompt，只注入本轮 top-k。
 6. 无命中：明确「知识库无相关内容」；**禁止编造**文档事实、书名、条款号。
-7. 用户消息与最终 assistant 消息经 F05 落库；每次运行写 `agent_run`（intent/steps/status）；LLM/embedding 测试默认 mock。
+7. 用户消息与最终 assistant 消息经 F05 落库；每次运行写 `agent_run`（`used_search`/steps/status）；LLM/embedding 测试默认 mock。
+8. `search_knowledge` 的 `tenant_id` 仅来自请求上下文，禁止由模型 tool 参数传入。

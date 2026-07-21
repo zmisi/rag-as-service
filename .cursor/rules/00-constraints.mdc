@@ -94,7 +94,7 @@ alwaysApply: true
 
 - 租户入口当前能力：RAG Agent（检索 + 多轮对话）。
 - LLM 调用使用 QWen。
-- Agent Loop、意图路由、上下文组装、记忆压缩、工具调用：见 F06。
+- Agent Loop（无前置意图分类）、上下文组装、记忆压缩、工具调用：见 F06。
 
 ## 7. Phase 1 明确不做
 
