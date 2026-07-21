@@ -41,6 +41,8 @@ export function RegisterForm() {
         headers: {
           "Content-Type": "application/json",
           Accept: "application/json",
+          // Next rewrite → api:8000 会改写 Host；后端用此头校验主站
+          "X-Forwarded-Host": window.location.host,
         },
         credentials: "include",
         body: JSON.stringify(form),

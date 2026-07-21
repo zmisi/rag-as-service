@@ -12,7 +12,7 @@ Phase 1 Spec 见 [../phase1/](../phase1/)。根本约束见 [00-constraints.mdc]
 
 ## Phase 2 — SOP 强制验证门禁
 
-- SOP（`tag=sop`）必须验证成功才能 publish（或上传后不可进入 verified）。
+- SOP（`tag=sop`）必须验证成功才能 publish（或上传后不可进入 review）。
 - 与 F03 Phase 1「verify = 必填项检查」区分：Phase 2 增加**内容/结构校验**。
 - 落地时修订 F03 或新增 Feature，并增加失败不可 publish 的 Test Cases。
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { DocAdminWorkspace } from "@/components/admin/DocAdminWorkspace";
 import { backendUrl, resolveMainSiteUrl } from "@/lib/api";
 
 export default function AdminPage() {
@@ -19,27 +20,17 @@ export default function AdminPage() {
             "X-Forwarded-Host": window.location.host,
           },
         });
-        if (response.status === 401) {
-          window.location.href = resolveMainSiteUrl("/login");
-          return;
-        }
-        if (response.status === 403) {
+        if (response.status === 401 || response.status === 403) {
           window.location.href = resolveMainSiteUrl("/login");
           return;
         }
         if (!response.ok) {
-          if (!cancelled) {
-            setError("无法验证登录状态");
-          }
+          if (!cancelled) setError("无法验证登录状态");
           return;
         }
-        if (!cancelled) {
-          setReady(true);
-        }
+        if (!cancelled) setReady(true);
       } catch {
-        if (!cancelled) {
-          setError("网络错误，请稍后重试");
-        }
+        if (!cancelled) setError("网络错误，请稍后重试");
       }
     }
 
@@ -67,10 +58,5 @@ export default function AdminPage() {
     );
   }
 
-  return (
-    <main style={{ maxWidth: 480, margin: "2rem auto", padding: "0 1rem" }}>
-      <h1>管理</h1>
-      <p>租户文档管理入口（F03 将完善此页面）。</p>
-    </main>
-  );
+  return <DocAdminWorkspace />;
 }

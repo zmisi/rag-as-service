@@ -13,7 +13,18 @@ from rag_api.api.dependencies.db import get_db
 from rag_api.clients.llm import LlmResult, ScriptedLlmClient
 from rag_api.config import get_settings
 from rag_api.db.migrate import upgrade_head
-from rag_api.db.models import AgentRun, AgentRunStep, Conversation, Message, Tenant, TenantMember, User
+from rag_api.db.models import (
+    AgentRun,
+    AgentRunStep,
+    Conversation,
+    Document,
+    DocumentFile,
+    IndexJob,
+    Message,
+    Tenant,
+    TenantMember,
+    User,
+)
 from rag_api.domain.identity.password import hash_password
 from rag_api.indexing.search import FakeKnowledgeSearcher
 from tests.helpers import issue_session_for_user, set_client_session_cookie, tenant_host_headers
@@ -97,6 +108,9 @@ def tenants(db: Session) -> dict:
     db.execute(delete(Message))
     db.execute(delete(AgentRun))
     db.execute(delete(Conversation))
+    db.execute(delete(IndexJob))
+    db.execute(delete(DocumentFile))
+    db.execute(delete(Document))
     db.commit()
 
     password_hash = hash_password("password123")

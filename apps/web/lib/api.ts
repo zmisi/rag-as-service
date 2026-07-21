@@ -1,3 +1,5 @@
+import type { DocDetail, DocSummary, IndexJobStatus } from "./documents";
+
 const API_PREFIX = "/backend";
 
 export function backendUrl(path: string): string {
@@ -301,4 +303,92 @@ function parseSse(raw: string): StreamEvent | null {
   } catch {
     return null;
   }
+}
+
+// --- F03 documents ---
+
+function tenantHeaders(extra?: HeadersInit): HeadersInit {
+  const headers: Record<string, string> = {};
+  if (typeof window !== "undefined") {
+    headers["X-Forwarded-Host"] = window.location.host;
+  }
+  const userId = process.env.NEXT_PUBLIC_DEV_USER_ID;
+  if (userId) {
+    headers["X-Test-User-Id"] = userId;
+  }
+  return { ...headers, ...(extra as Record<string, string>) };
+}
+
+async function docApi<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`/backend/v1${path}`, {
+    ...init,
+    credentials: "include",
+    headers: {
+      ...tenantHeaders(),
+      ...(init?.headers ?? {}),
+    },
+  });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const body = await res.json();
+      if (typeof body?.detail === "string") detail = body.detail;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail);
+  }
+  if (res.status === 204) return undefined as T;
+  return res.json() as Promise<T>;
+}
+
+export function listDocuments(tag?: string) {
+  const q = tag ? `?tag=${encodeURIComponent(tag)}` : "";
+  return docApi<DocSummary[]>(`/documents${q}`);
+}
+
+export function getDocument(id: string) {
+  return docApi<DocDetail>(`/documents/${id}`);
+}
+
+export function createDocument() {
+  return docApi<DocSummary>("/documents", { method: "POST" });
+}
+
+export function saveDocument(
+  id: string,
+  body: { title?: string; tag?: string },
+) {
+  return docApi<DocDetail>(`/documents/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function uploadDocumentFile(id: string, file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  return docApi<DocDetail>(`/documents/${id}/files`, {
+    method: "POST",
+    body: form,
+  });
+}
+
+export function submitForReview(id: string) {
+  return docApi<DocDetail>(`/documents/${id}/submit-review`, {
+    method: "POST",
+  });
+}
+
+export function publishDocument(id: string) {
+  return docApi<DocDetail>(`/documents/${id}/publish`, { method: "POST" });
+}
+
+export function newDocumentVersion(id: string) {
+  return docApi<DocDetail>(`/documents/${id}/new-version`, { method: "POST" });
+}
+
+export function getIndexStatus(id: string) {
+  return docApi<IndexJobStatus | null>(`/documents/${id}/index-status`);
 }
