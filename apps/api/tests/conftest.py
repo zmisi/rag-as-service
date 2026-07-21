@@ -1,33 +1,87 @@
-"""Shared fixtures for F05 API tests (auth stub + two tenants)."""
-
-from __future__ import annotations
-
+import os
 from collections.abc import Generator
 from uuid import UUID
 
 import pytest
 from fastapi import Header, HTTPException
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, select
-from sqlalchemy.orm import Session
+from sqlalchemy import create_engine, delete, select, text
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session, sessionmaker
 
+from rag_api.api import create_app
 from rag_api.api.dependencies import get_current_user
+from rag_api.api.dependencies.db import get_db
 from rag_api.config import get_settings
-from rag_api.db import run_migrations
+from rag_api.db.migrate import upgrade_head
 from rag_api.db.models import Conversation, Message, Tenant, TenantMember, User
-from rag_api.db.session import get_db, get_session_factory
-from rag_api.main import app
 
 
-@pytest.fixture(scope="session", autouse=True)
-def _migrate() -> None:
-    get_settings.cache_clear()
-    run_migrations(database_url=get_settings().database_url)
+def _database_url() -> str | None:
+    return os.environ.get("TEST_DATABASE_URL") or os.environ.get("DATABASE_URL")
 
 
 @pytest.fixture
-def db() -> Generator[Session, None, None]:
-    session = get_session_factory()()
+def app():
+    return create_app()
+
+
+@pytest.fixture
+def client(app):
+    with TestClient(app) as test_client:
+        yield test_client
+
+
+@pytest.fixture(scope="session")
+def db_engine() -> Engine:
+    url = _database_url()
+    if not url:
+        pytest.skip("DATABASE_URL or TEST_DATABASE_URL not set")
+
+    engine = create_engine(
+        url,
+        pool_pre_ping=True,
+        connect_args={"options": "-csearch_path=rag_service,public"},
+    )
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+    except Exception as exc:
+        pytest.skip(f"PostgreSQL not available: {exc}")
+
+    get_settings.cache_clear()
+    upgrade_head()
+    yield engine
+    engine.dispose()
+
+
+@pytest.fixture
+def db_session(db_engine: Engine) -> Session:
+    """F01-style: outer transaction rolled back after each test."""
+    connection = db_engine.connect()
+    transaction = connection.begin()
+    session = sessionmaker(bind=connection, expire_on_commit=False)()
+    yield session
+    session.close()
+    transaction.rollback()
+    connection.close()
+
+
+@pytest.fixture
+def api_client(app, db_session: Session) -> Generator[TestClient, None, None]:
+    def override_get_db() -> Generator[Session, None, None]:
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    with TestClient(app) as test_client:
+        yield test_client
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def db(db_engine: Engine) -> Generator[Session, None, None]:
+    """F05-style: real commits (services call session.commit())."""
+    session = sessionmaker(bind=db_engine, expire_on_commit=False)()
     try:
         yield session
     finally:
@@ -76,8 +130,8 @@ def tenants(db: Session) -> dict:
 
 
 @pytest.fixture
-def client(tenants: dict, db: Session) -> Generator[TestClient, None, None]:
-    """Single TestClient; auth via X-Test-User-Id (F02 stub for tests)."""
+def client_a(app, tenants: dict, db: Session) -> Generator[TestClient, None, None]:
+    """F05 TestClient; auth via X-Test-User-Id stub."""
 
     def _override_user(
         x_test_user_id: str | None = Header(default=None, alias="X-Test-User-Id"),
@@ -95,30 +149,25 @@ def client(tenants: dict, db: Session) -> Generator[TestClient, None, None]:
     app.dependency_overrides[get_current_user] = _override_user
     app.dependency_overrides[get_db] = _override_db
     with TestClient(app) as c:
+        c.headers.update(
+            {
+                "Host": "tenant-a.lxzxai.com",
+                "X-Test-User-Id": str(tenants["user_a"].id),
+            }
+        )
         yield c
     app.dependency_overrides.clear()
 
 
 @pytest.fixture
-def client_a(client: TestClient, tenants: dict) -> TestClient:
-    client.headers.update(
-        {
-            "Host": "tenant-a.lxzxai.com",
-            "X-Test-User-Id": str(tenants["user_a"].id),
-        }
-    )
-    return client
-
-
-@pytest.fixture
-def switch_to_b(client: TestClient, tenants: dict):
+def switch_to_b(client_a: TestClient, tenants: dict):
     def _switch() -> TestClient:
-        client.headers.update(
+        client_a.headers.update(
             {
                 "Host": "tenant-b.lxzxai.com",
                 "X-Test-User-Id": str(tenants["user_b"].id),
             }
         )
-        return client
+        return client_a
 
     return _switch

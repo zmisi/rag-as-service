@@ -1,4 +1,4 @@
-"""FastAPI dependencies: DB session, tenant from Host, user auth stub."""
+"""F05 auth stub + tenant membership dependencies."""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from rag_api.api.dependencies.db import get_db
 from rag_api.db.models import Tenant, TenantMember, User
-from rag_api.db.session import get_db
 
 _HOST_SUBDOMAIN_RE = re.compile(
     r"^(?P<subdomain>[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?)\.lxzxai\.com(?::\d+)?$",

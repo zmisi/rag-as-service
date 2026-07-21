@@ -5,11 +5,15 @@ from __future__ import annotations
 import time
 from datetime import datetime
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from rag_api.db.models import Conversation
+
+
+pytestmark = pytest.mark.integration
 
 
 def test_f05_t01_create_conversation_appears_in_default_list(client_a: TestClient) -> None:

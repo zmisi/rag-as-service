@@ -1,4 +1,4 @@
-"""Alembic helpers used at process startup."""
+"""Alembic helpers used at process startup and in tests."""
 
 from __future__ import annotations
 
@@ -16,7 +16,6 @@ from rag_api.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-# apps/api/ — alembic.ini lives next to the package root layout
 _API_ROOT = Path(__file__).resolve().parents[3]
 
 
@@ -40,10 +39,15 @@ def run_migrations(*, database_url: str | None = None) -> None:
     script = ScriptDirectory.from_config(cfg)
     head = script.get_current_head()
 
-    engine = create_engine(url)
+    engine = create_engine(
+        url,
+        connect_args={"options": "-csearch_path=rag_service,public"},
+    )
     try:
         with engine.connect() as conn:
-            db, role = conn.execute(text("SELECT current_database(), current_user")).one()
+            db, role = conn.execute(
+                text("SELECT current_database(), current_user")
+            ).one()
             ctx = MigrationContext.configure(
                 conn,
                 opts={"version_table_schema": "rag_service"},
@@ -62,3 +66,8 @@ def run_migrations(*, database_url: str | None = None) -> None:
     )
     command.upgrade(cfg, "head")
     logger.info("Alembic migrations complete (at head=%s)", head)
+
+
+def upgrade_head() -> None:
+    """Alias for tests and scripts."""
+    run_migrations()

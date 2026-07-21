@@ -58,7 +58,7 @@ flowchart TD
 | index_job | `id`, `tenant_id`, `document_id`, `version`, `status`(`pending`\|`running`\|`succeeded`\|`failed`), `error` |
 | chunk | `id`, `tenant_id`, `document_id`, `version`, `ordinal`, `content`, `embedding vector`, `is_active` |
 
-时间戳列 `createtime` / `lastmodifiedtime` 见 [00-constraints.mdc](../../../../.cursor/rules/00-constraints.mdc) §3.1。
+时间戳列 `create_at` / `update_at` 见 [00-constraints.mdc](../../../../.cursor/rules/00-constraints.mdc) §3.2。
 
 内部检索 API（非对外 Phase 2 API）：`search(tenant_id, query, top_k) → chunks[]`。
 

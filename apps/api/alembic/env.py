@@ -1,29 +1,25 @@
 """Alembic environment.
 
-Uses DATABASE_URL / Settings; does not rely on ORM metadata for F01 DDL
-(raw SQL migrations aligned with Feature Spec).
+Uses DATABASE_URL / Settings; raw SQL migrations aligned with Feature Spec.
 """
 
 from __future__ import annotations
 
-from logging.config import fileConfig
 import logging
+from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import engine_from_config, pool, text
 
 from rag_api.config import get_settings
 
 config = context.config
 
 if config.config_file_name is not None:
-    # Keep app loggers (uvicorn / rag_api) when migrations run at startup.
     fileConfig(config.config_file_name, disable_existing_loggers=False)
-    # alembic.ini sets root to WARN; restore INFO for our package.
     logging.getLogger("rag_api").setLevel(logging.INFO)
     if not logging.getLogger("rag_api").handlers:
         logging.getLogger().setLevel(logging.INFO)
-
 
 target_metadata = None
 
@@ -56,11 +52,12 @@ def run_migrations_online() -> None:
         configuration,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args={"options": "-csearch_path=rag_service,public"},
     )
 
     with connectable.connect() as connection:
-        # Ensure schema exists before alembic_version table is created there
         connection.exec_driver_sql("CREATE SCHEMA IF NOT EXISTS rag_service")
+        connection.execute(text("SET search_path TO rag_service, public"))
         connection.commit()
         context.configure(
             connection=connection,

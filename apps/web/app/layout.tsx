@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "lxzxai",
+  title: "rag-as-service",
   description: "RAG as a Service",
 };
 

@@ -1,33 +1,19 @@
-"""SQLAlchemy engine and session factory."""
-
-from __future__ import annotations
-
 from collections.abc import Generator
+from functools import lru_cache
 
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from rag_api.config import get_settings
-
-_engine = None
-_SessionLocal: sessionmaker[Session] | None = None
+from rag_api.db.engine import get_engine
 
 
-def get_engine():
-    global _engine, _SessionLocal
-    if _engine is None:
-        _engine = create_engine(
-            get_settings().database_url,
-            pool_pre_ping=True,
-        )
-        _SessionLocal = sessionmaker(bind=_engine, autocommit=False, autoflush=False)
-    return _engine
-
-
+@lru_cache
 def get_session_factory() -> sessionmaker[Session]:
-    get_engine()
-    assert _SessionLocal is not None
-    return _SessionLocal
+    return sessionmaker(
+        bind=get_engine(),
+        autocommit=False,
+        autoflush=False,
+        expire_on_commit=False,
+    )
 
 
 def get_db() -> Generator[Session, None, None]:
@@ -36,3 +22,7 @@ def get_db() -> Generator[Session, None, None]:
         yield session
     finally:
         session.close()
+
+
+# Back-compat alias used by some F01 helpers.
+get_db_session = get_db

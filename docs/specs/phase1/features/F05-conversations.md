@@ -75,7 +75,7 @@ flowchart TD
 | conversation | `id`, `tenant_id`, `user_id`, `title`, `status`(`active`\|`archived`), `deleted_at` |
 | message | `id`, `conversation_id`, `tenant_id`, `role`, `content`, 可选 `meta` JSON |
 
-时间戳列与 F01 一致：`create_at` / `update_at` + trigger（见 [00-constraints.mdc](../../../../.cursor/rules/00-constraints.mdc) §3.1 语义）。
+时间戳列 `create_at` / `update_at` 见 [00-constraints.mdc](../../../../.cursor/rules/00-constraints.mdc) §3.2。
 
 ## Test Cases
 
