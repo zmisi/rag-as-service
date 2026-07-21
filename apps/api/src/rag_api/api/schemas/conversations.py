@@ -13,6 +13,10 @@ class ConversationCreate(BaseModel):
     title: Optional[str] = None
 
 
+class ConversationUpdate(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+
+
 class ConversationOut(BaseModel):
     id: UUID
     tenant_id: UUID

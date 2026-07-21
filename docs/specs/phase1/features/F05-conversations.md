@@ -63,6 +63,7 @@ flowchart TD
 | `GET` | `/v1/conversations?status=active\|archived` | 默认 `active`；排除已软删；仅本 `tenant_id`+`user_id` |
 | `POST` | `/v1/conversations/{id}/archive` | `active→archived` |
 | `POST` | `/v1/conversations/{id}/unarchive` | `archived→active` |
+| `PATCH` | `/v1/conversations/{id}` | 更新 `title`（重命名） |
 | `DELETE` | `/v1/conversations/{id}` | 软删除（写 `deleted_at`） |
 | `GET` | `/v1/conversations/{id}/messages` | 按 `create_at` 升序（Spec 文中 `createtime` 映射为此列） |
 | `POST` | `/v1/conversations/{id}/messages` | 仅 `active`；`archived` → **409** |

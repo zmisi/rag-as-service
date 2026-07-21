@@ -125,6 +125,26 @@ def soft_delete_conversation(
     db.commit()
 
 
+def rename_conversation(
+    db: Session,
+    *,
+    conversation_id: UUID,
+    tenant_id: UUID,
+    user_id: UUID,
+    title: str,
+) -> Conversation:
+    conv = get_owned_conversation(
+        db, conversation_id=conversation_id, tenant_id=tenant_id, user_id=user_id
+    )
+    cleaned = title.strip()
+    if not cleaned:
+        raise HTTPException(status_code=422, detail="Title required")
+    conv.title = cleaned
+    db.commit()
+    db.refresh(conv)
+    return conv
+
+
 def list_messages(
     db: Session,
     *,

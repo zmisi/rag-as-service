@@ -12,6 +12,7 @@ import {
   listConversations,
   listMessages,
   postMessage,
+  renameConversation,
   unarchiveConversation,
   type Conversation,
   type ConversationStatus,
@@ -137,6 +138,19 @@ export function ChatWorkspace() {
     }
   }
 
+  async function handleRename(id: string, title: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      await renameConversation(id, title);
+      await refreshList(statusFilter);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "重命名失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleSend(content: string) {
     if (!selectedId) return;
     setError(null);
@@ -161,6 +175,7 @@ export function ChatWorkspace() {
         onCreate={() => void handleCreate()}
         onArchive={(id) => void handleArchive(id)}
         onUnarchive={(id) => void handleUnarchive(id)}
+        onRename={(id, title) => void handleRename(id, title)}
         onDelete={(id) => void handleDelete(id)}
       />
       <main className="chat-main">
@@ -171,7 +186,7 @@ export function ChatWorkspace() {
           <>
             <header className="chat-header">
               <h2>{selected.title}</h2>
-              <span className="status-pill">{selected.status}</span>
+              <span className="status-label">{selected.status}</span>
             </header>
             <MessageList
               messages={messages}

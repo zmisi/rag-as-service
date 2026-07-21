@@ -12,6 +12,7 @@ from rag_api.api.dependencies import AuthContext, require_tenant_member
 from rag_api.api.schemas.conversations import (
     ConversationCreate,
     ConversationOut,
+    ConversationUpdate,
     MessageCreate,
     MessageOut,
 )
@@ -71,6 +72,23 @@ def unarchive_conversation(
         conversation_id=conversation_id,
         tenant_id=auth.tenant_id,
         user_id=auth.user_id,
+    )
+    return ConversationOut.model_validate(conv)
+
+
+@router.patch("/{conversation_id}", response_model=ConversationOut)
+def update_conversation(
+    conversation_id: UUID,
+    body: ConversationUpdate,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(require_tenant_member),
+) -> ConversationOut:
+    conv = conv_svc.rename_conversation(
+        db,
+        conversation_id=conversation_id,
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        title=body.title,
     )
     return ConversationOut.model_validate(conv)
 

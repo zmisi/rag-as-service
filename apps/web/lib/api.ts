@@ -85,6 +85,13 @@ export function deleteConversation(id: string) {
   return api<void>(`/conversations/${id}`, { method: "DELETE" });
 }
 
+export function renameConversation(id: string, title: string) {
+  return api<Conversation>(`/conversations/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ title }),
+  });
+}
+
 export function listMessages(conversationId: string) {
   return api<Message[]>(`/conversations/${conversationId}/messages`);
 }
