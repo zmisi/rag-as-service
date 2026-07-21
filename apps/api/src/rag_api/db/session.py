@@ -16,9 +16,13 @@ def get_session_factory() -> sessionmaker[Session]:
     )
 
 
-def get_db_session() -> Generator[Session, None, None]:
+def get_db() -> Generator[Session, None, None]:
     session = get_session_factory()()
     try:
         yield session
     finally:
         session.close()
+
+
+# Back-compat alias used by some F01 helpers.
+get_db_session = get_db

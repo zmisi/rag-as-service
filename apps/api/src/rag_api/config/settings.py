@@ -47,6 +47,8 @@ class Settings(BaseSettings):
     api_host: str = Field(default="0.0.0.0", alias="API_HOST")
     api_port: int = Field(default=8000, alias="API_PORT")
     cookie_secure: bool = Field(default=False, alias="COOKIE_SECURE")
+    # Dev-only: accept X-Test-User-Id instead of F02 cookie auth (F05 UI).
+    auth_stub_enabled: bool = Field(default=False, alias="AUTH_STUB_ENABLED")
 
 
 @lru_cache
