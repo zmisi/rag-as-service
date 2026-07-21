@@ -30,6 +30,21 @@ export function resolvePostRegistrationUrl(redirectUrl: string): string {
   return target.toString();
 }
 
+/** Build main-site URL with local dev port when on *.lxzxai.com. */
+export function resolveMainSiteUrl(path: string): string {
+  const normalized = path.startsWith("/") ? path : `/${path}`;
+  if (typeof window === "undefined") {
+    return `https://lxzxai.com${normalized}`;
+  }
+
+  const { protocol, port } = window.location;
+  let base = `${protocol}//lxzxai.com`;
+  if (port && port !== "443" && port !== "80") {
+    base += `:${port}`;
+  }
+  return `${base}${normalized}`;
+}
+
 export async function fetchBackend(
   path: string,
   init?: RequestInit,

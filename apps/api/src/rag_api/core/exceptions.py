@@ -16,3 +16,11 @@ def registration_error_from_domain(exc: DomainValidationError) -> RegistrationEr
     if exc.code == "reserved":
         status_code = 400
     return RegistrationError(exc.code, str(exc), status_code)
+
+
+class LoginError(Exception):
+    def __init__(self, code: str, message: str, status_code: int = 401) -> None:
+        self.code = code
+        self.message = message
+        self.status_code = status_code
+        super().__init__(message)

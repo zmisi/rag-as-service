@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from rag_api.api.dependencies.db import get_db
 from rag_api.services.registration_service import RegistrationService
-from tests.helpers import APEX_HOST_HEADERS, JSON_HEADERS, unique_subdomain
+from tests.helpers import APEX_HOST_HEADERS, JSON_HEADERS, attach_session_cookie, unique_subdomain
 
 
 def _register_payload(email: str | None = None, subdomain: str | None = None):
@@ -54,6 +54,7 @@ def test_f01_t01_successful_registration(api_client, db_session):
     assert body["subdomain"] == payload["subdomain"]
     assert _tenant_count(db_session, payload["subdomain"]) == 1
     assert _owner_count(db_session, payload["subdomain"]) == 1
+    attach_session_cookie(api_client, response)
     assert api_client.cookies.get("pb_session")
 
 

@@ -43,6 +43,10 @@ class Settings(BaseSettings):
         alias="SESSION_COOKIE_DOMAIN",
     )
     session_ttl_days: int = Field(default=14, alias="SESSION_TTL_DAYS")
+    session_slide_renew_threshold_days: int = Field(
+        default=7,
+        alias="SESSION_SLIDE_RENEW_THRESHOLD_DAYS",
+    )
     apex_host: str = Field(default="lxzxai.com", alias="APEX_HOST")
     api_host: str = Field(default="0.0.0.0", alias="API_HOST")
     api_port: int = Field(default=8000, alias="API_PORT")
