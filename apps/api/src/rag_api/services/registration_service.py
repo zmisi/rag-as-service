@@ -65,14 +65,15 @@ class RegistrationService:
             raise RegistrationError("subdomain_taken", "subdomain already taken", 409)
 
         try:
-            with self._session.begin():
-                result = self._registration.register_owner(
-                    email=normalized_email,
-                    password_hash=password_hash,
-                    subdomain=normalized_subdomain,
-                )
-                session_issue = self._sessions.create_session(result.user.id)
+            result = self._registration.register_owner(
+                email=normalized_email,
+                password_hash=password_hash,
+                subdomain=normalized_subdomain,
+            )
+            session_issue = self._sessions.create_session(result.user.id)
+            self._session.commit()
         except IntegrityError as exc:
+            self._session.rollback()
             logger.info(
                 "registration_failed_integrity",
                 extra={"email": normalized_email, "subdomain": normalized_subdomain},

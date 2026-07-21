@@ -6,12 +6,27 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _API_ROOT = Path(__file__).resolve().parents[3]
-_REPO_ROOT = _API_ROOT.parents[1]
+
+
+def _resolve_repo_root(api_root: Path) -> Path:
+    """Monorepo: repo root is parent of ``apps/``. Docker: API root is ``/app``."""
+    if api_root.name == "api" and api_root.parent.name == "apps":
+        return api_root.parent.parent
+    return api_root
+
+
+_REPO_ROOT = _resolve_repo_root(_API_ROOT)
+
+
+def _env_files() -> tuple[Path, ...] | None:
+    candidates = (_REPO_ROOT / ".env", _API_ROOT / ".env")
+    existing = tuple(path for path in candidates if path.is_file())
+    return existing or None
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=(_REPO_ROOT / ".env", _API_ROOT / ".env"),
+        env_file=_env_files(),
         env_file_encoding="utf-8",
         extra="ignore",
     )

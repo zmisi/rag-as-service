@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from "react";
 
-import { backendUrl } from "@/lib/api";
+import { backendUrl, resolvePostRegistrationUrl } from "@/lib/api";
 
 type FormState = {
   email: string;
@@ -36,32 +36,20 @@ export function RegisterForm() {
 
     setSubmitting(true);
     try {
-      const response = await fetch(
-        backendUrl("/api/v1/auth/register?redirect=1"),
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "text/html",
-          },
-          credentials: "include",
-          redirect: "manual",
-          body: JSON.stringify(form),
+      const response = await fetch(backendUrl("/api/v1/auth/register"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
         },
-      );
-
-      if (response.status === 302) {
-        const location = response.headers.get("Location");
-        if (location) {
-          window.location.href = location;
-          return;
-        }
-      }
+        credentials: "include",
+        body: JSON.stringify(form),
+      });
 
       if (response.status === 201) {
         const body = (await response.json()) as { redirect_url?: string };
         if (body.redirect_url) {
-          window.location.href = body.redirect_url;
+          window.location.href = resolvePostRegistrationUrl(body.redirect_url);
           return;
         }
       }
