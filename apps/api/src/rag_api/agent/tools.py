@@ -12,6 +12,7 @@ from uuid import UUID
 from rag_api.agent.constants import TOOL_SEARCH_KNOWLEDGE, TOOL_WHITELIST, TOP_K
 from rag_api.agent.context import format_chunks_as_untrusted
 from rag_api.indexing.search import KnowledgeSearcher
+from rag_api.observability.agent_log import log_agent, log_system_call, snip
 
 logger = logging.getLogger("rag_api.timing")
 
@@ -78,6 +79,14 @@ class ToolExecutor:
     def _search_knowledge(self, arguments: dict[str, Any]) -> ToolExecutionResult:
         query = str(arguments.get("query") or "").strip()
         # Ignore any tenant_id the model might have hallucinated into args
+        log_system_call(
+            "knowledge_search",
+            "search",
+            tenant_id=str(self._tenant_id),
+            query=snip(query, 200),
+            query_chars=len(query),
+            top_k=TOP_K,
+        )
         t0 = time.perf_counter()
         hits = self._searcher.search(self._tenant_id, query, top_k=TOP_K)
         search_ms = (time.perf_counter() - t0) * 1000.0
@@ -96,6 +105,24 @@ class ToolExecutor:
             len(query),
             len(chunks),
             TOP_K,
+        )
+        preview = " | ".join(
+            f"#{i + 1} doc={c['document_id'][:8]}… score={c['score']:.3f} text={snip(c['content'], 120)}"
+            for i, c in enumerate(chunks[:3])
+        )
+        log_agent(
+            "tool.search_knowledge",
+            search_ms=f"{search_ms:.1f}",
+            query=snip(query, 200),
+            hit_count=len(chunks),
+            top_k=TOP_K,
+            hits_preview=preview or "-",
+        )
+        log_system_call(
+            "knowledge_search",
+            "search.ok",
+            search_ms=f"{search_ms:.1f}",
+            hit_count=len(chunks),
         )
         payload = {
             "query": query,

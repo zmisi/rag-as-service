@@ -12,6 +12,7 @@ from rag_api.clients.llm import LlmClient
 from rag_api.db.models import AgentRun, AgentRunStep, Message
 from rag_api.indexing.search import KnowledgeSearcher
 from rag_api.observability.timing import StageTimer
+from rag_api.observability.agent_log import log_agent, snip
 from rag_api.services import conversations as conv_svc
 
 
@@ -41,6 +42,13 @@ def run_user_turn(
         conversation_id=str(conversation_id),
         tenant_id=str(tenant_id),
         content_chars=len(content),
+    )
+    log_agent(
+        "turn.start",
+        conversation_id=str(conversation_id),
+        tenant_id=str(tenant_id),
+        user_id=str(user_id),
+        content=snip(content, 200),
     )
 
     # Ownership + active check (raises 404/409)
@@ -127,6 +135,17 @@ def run_user_turn(
         status=result.status,
         used_search=result.used_search,
         step_count=result.step_count,
+    )
+    log_agent(
+        "turn.done",
+        conversation_id=str(conversation_id),
+        tenant_id=str(tenant_id),
+        status=result.status,
+        used_search=int(result.used_search),
+        steps=result.step_count,
+        reply_chars=len(result.reply or ""),
+        reply=snip(result.reply, 500),
+        total_ms=f"{total_ms:.1f}",
     )
 
     return TurnResult(

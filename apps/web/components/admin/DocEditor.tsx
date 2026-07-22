@@ -123,7 +123,7 @@ export function DocEditor({
                 type="file"
                 multiple
                 className="doc-file-input"
-                accept=".txt,.pdf,.docx,.pptx"
+                accept=".txt,.md,.pdf,.docx,.pptx"
                 onChange={(e) => {
                   if (e.target.files?.length) {
                     onUploadFiles(e.target.files);
@@ -140,7 +140,7 @@ export function DocEditor({
                 选择文件
               </button>
               <p className="doc-hint">
-                支持 .txt / .pdf / .docx / .pptx，单文件 ≤ 20MB（不支持旧版 .doc / .ppt）
+                支持 .txt / .md / .pdf / .docx / .pptx，单文件 ≤ 20MB（不支持旧版 .doc / .ppt）
               </p>
             </>
           ) : null}

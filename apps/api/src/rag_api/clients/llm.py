@@ -12,6 +12,7 @@ import httpx
 
 from rag_api.agent.constants import LLM_TIMEOUT_S, NO_HIT_PHRASE, TOOL_SEARCH_KNOWLEDGE
 from rag_api.config import Settings, get_settings
+from rag_api.observability.agent_log import log_llm_request, log_llm_response, log_system_call
 
 logger = logging.getLogger(__name__)
 _QWEN_HTTP_CLIENT = httpx.Client(
@@ -32,6 +33,9 @@ class ToolCall:
 class LlmResult:
     content: str | None = None
     tool_calls: list[ToolCall] = field(default_factory=list)
+    usage: dict[str, Any] = field(default_factory=dict)
+    finish_reason: str | None = None
+    model: str | None = None
 
 
 class LlmTimeoutError(Exception):
@@ -112,6 +116,22 @@ class QwenClient:
         }
         msg_count = len(body["messages"])
         tool_count = len(tools or [])
+        log_system_call(
+            "dashscope",
+            "chat.completions",
+            model=model,
+            url=url,
+            msg_count=msg_count,
+            tool_defs=tool_count,
+            timeout_s=LLM_TIMEOUT_S,
+        )
+        log_llm_request(
+            system="dashscope",
+            model=model,
+            url=url,
+            messages=body["messages"],
+            tools=tools,
+        )
         t0 = time.perf_counter()
         try:
             # Keep a process-level client to reuse TLS connections across turns.
@@ -126,14 +146,33 @@ class QwenClient:
             logger.warning(
                 "QWen HTTP %s after %.1fms: %s", code, http_ms, detail or exc
             )
+            log_system_call(
+                "dashscope",
+                "chat.completions.error",
+                http_ms=f"{http_ms:.1f}",
+                status=code,
+                detail=detail or str(exc),
+            )
             raise LlmTimeoutError(f"QWen HTTP {code}: {detail or exc}") from exc
         except httpx.TimeoutException as exc:
             http_ms = (time.perf_counter() - t0) * 1000.0
             logger.warning("QWen request timed out after %.1fms: %s", http_ms, exc)
+            log_system_call(
+                "dashscope",
+                "chat.completions.timeout",
+                http_ms=f"{http_ms:.1f}",
+                error=str(exc),
+            )
             raise LlmTimeoutError(f"QWen request timed out: {exc}") from exc
         except httpx.RequestError as exc:
             http_ms = (time.perf_counter() - t0) * 1000.0
             logger.warning("QWen request failed after %.1fms: %s", http_ms, exc)
+            log_system_call(
+                "dashscope",
+                "chat.completions.request_error",
+                http_ms=f"{http_ms:.1f}",
+                error=str(exc),
+            )
             raise LlmTimeoutError(f"QWen request failed: {exc}") from exc
         except Exception as exc:  # noqa: BLE001 — never leak network errors as 500
             http_ms = (time.perf_counter() - t0) * 1000.0
@@ -153,6 +192,7 @@ class QwenClient:
         choice = (payload.get("choices") or [{}])[0]
         message = choice.get("message") or {}
         content = message.get("content")
+        finish_reason = choice.get("finish_reason")
         tool_calls_raw = message.get("tool_calls") or []
         tool_calls: list[ToolCall] = []
         for tc in tool_calls_raw:
@@ -170,12 +210,13 @@ class QwenClient:
                 )
             )
         usage = payload.get("usage") if isinstance(payload, dict) else None
+        usage_dict = usage if isinstance(usage, dict) else {}
         usage_bits = ""
-        if isinstance(usage, dict):
+        if usage_dict:
             usage_bits = (
-                f" prompt_tokens={usage.get('prompt_tokens')} "
-                f"completion_tokens={usage.get('completion_tokens')} "
-                f"total_tokens={usage.get('total_tokens')}"
+                f" prompt_tokens={usage_dict.get('prompt_tokens')} "
+                f"completion_tokens={usage_dict.get('completion_tokens')} "
+                f"total_tokens={usage_dict.get('total_tokens')}"
             )
         logger.info(
             "timing qwen http_ms=%.1f model=%s msg_count=%s tool_defs=%s "
@@ -188,7 +229,33 @@ class QwenClient:
             len(content or ""),
             usage_bits,
         )
-        return LlmResult(content=content, tool_calls=tool_calls)
+        log_llm_response(
+            system="dashscope",
+            model=str(payload.get("model") or model),
+            http_ms=http_ms,
+            content=content,
+            tool_calls=tool_calls,
+            usage=usage_dict,
+            finish_reason=str(finish_reason) if finish_reason else None,
+        )
+        log_system_call(
+            "dashscope",
+            "chat.completions.ok",
+            http_ms=f"{http_ms:.1f}",
+            model=payload.get("model") or model,
+            prompt_tokens=usage_dict.get("prompt_tokens"),
+            completion_tokens=usage_dict.get("completion_tokens"),
+            total_tokens=usage_dict.get("total_tokens"),
+            finish_reason=finish_reason,
+            tool_calls=len(tool_calls),
+        )
+        return LlmResult(
+            content=content,
+            tool_calls=tool_calls,
+            usage=usage_dict,
+            finish_reason=str(finish_reason) if finish_reason else None,
+            model=str(payload.get("model") or model),
+        )
 
 
 _GREETING_MARKERS = frozenset(

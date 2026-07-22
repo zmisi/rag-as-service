@@ -46,6 +46,19 @@ def list_documents(
     return [DocumentSummaryOut.model_validate(d) for d in items]
 
 
+@router.post("/index/run-pending", response_model=list[IndexJobOut])
+def run_pending_index_jobs(
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(require_tenant_member),
+) -> list[IndexJobOut]:
+    """F04temp: drain pending index_jobs for local e2e."""
+    from rag_api.indexing.worker import process_pending_jobs
+
+    jobs = process_pending_jobs(db, limit=50)
+    owned = [j for j in jobs if j.tenant_id == auth.tenant_id]
+    return [IndexJobOut.model_validate(j) for j in owned]
+
+
 @router.get("/{document_id}", response_model=DocumentDetailOut)
 def get_document(
     document_id: UUID,
@@ -152,3 +165,14 @@ def index_status(
     if job is None:
         return None
     return IndexJobOut.model_validate(job)
+
+
+@router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_document(
+    document_id: UUID,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(require_tenant_member),
+) -> None:
+    doc_svc.soft_delete_document(
+        db, document_id=document_id, tenant_id=auth.tenant_id
+    )

@@ -20,6 +20,7 @@ from rag_api.agent.tools import ToolExecutor, tool_definitions
 from rag_api.clients.llm import LlmClient, LlmResult, LlmTimeoutError, ToolCall
 from rag_api.db.models import Message
 from rag_api.indexing.search import KnowledgeSearcher
+from rag_api.observability.agent_log import dump_json, log_agent, snip
 
 logger = logging.getLogger(__name__)
 timing_log = logging.getLogger("rag_api.timing")
@@ -59,11 +60,26 @@ class AgentLoop:
         pending_tools: list[dict[str, Any]] = []
         step_count = 0
         loop_t0 = time.perf_counter()
+        log_agent(
+            "loop.start",
+            tenant_id=str(self._tools._tenant_id),
+            max_steps=MAX_STEPS,
+            history_count=len(history),
+            user_chars=len(user_content),
+            user=snip(user_content, 200),
+        )
 
         try:
             for _ in range(MAX_STEPS):
                 step_count += 1
                 step_t0 = time.perf_counter()
+                log_agent(
+                    "loop.step.begin",
+                    step=step_count,
+                    max_steps=MAX_STEPS,
+                    pending_tool_msgs=len(pending_tools),
+                    used_search=int(used_search),
+                )
 
                 t_assemble = time.perf_counter()
                 messages = assemble_messages(
@@ -76,6 +92,7 @@ class AgentLoop:
                 t_llm = time.perf_counter()
                 result = self._llm.complete(messages, tools=tool_definitions())
                 llm_ms = (time.perf_counter() - t_llm) * 1000.0
+                usage = result.usage or {}
                 steps.append(
                     LoopStepRecord(
                         step_type="llm",
@@ -85,6 +102,8 @@ class AgentLoop:
                                 {"id": t.id, "name": t.name, "arguments": t.arguments}
                                 for t in result.tool_calls
                             ],
+                            "usage": usage,
+                            "finish_reason": result.finish_reason,
                             "timing_ms": {
                                 "assemble": round(assemble_ms, 1),
                                 "llm": round(llm_ms, 1),
@@ -94,17 +113,42 @@ class AgentLoop:
                 )
                 timing_log.info(
                     "timing agent_loop step=%s assemble_ms=%.1f llm_ms=%.1f "
-                    "msg_count=%s tool_calls=%s",
+                    "msg_count=%s tool_calls=%s prompt_tokens=%s completion_tokens=%s",
                     step_count,
                     assemble_ms,
                     llm_ms,
                     len(messages),
                     len(result.tool_calls),
+                    usage.get("prompt_tokens"),
+                    usage.get("completion_tokens"),
+                )
+                log_agent(
+                    "loop.step.llm",
+                    step=step_count,
+                    assemble_ms=f"{assemble_ms:.1f}",
+                    llm_ms=f"{llm_ms:.1f}",
+                    msg_count=len(messages),
+                    model=result.model,
+                    finish_reason=result.finish_reason,
+                    prompt_tokens=usage.get("prompt_tokens"),
+                    completion_tokens=usage.get("completion_tokens"),
+                    total_tokens=usage.get("total_tokens"),
+                    tool_call_count=len(result.tool_calls),
+                    content_chars=len(result.content or ""),
+                    content=snip(result.content, 400),
                 )
 
                 if result.tool_calls:
                     # Execute first tool call per step (Phase 1 simple harness)
                     tc = result.tool_calls[0]
+                    log_agent(
+                        "loop.tool.request",
+                        step=step_count,
+                        tool=tc.name,
+                        tool_call_id=tc.id,
+                        arguments=dump_json(tc.arguments, 500),
+                        whitelist_ok=int(tc.name in (TOOL_SEARCH_KNOWLEDGE,)),
+                    )
                     if tc.name not in (TOOL_SEARCH_KNOWLEDGE,) and tc.name:
                         # Whitelist violation: terminate without executing
                         steps.append(
@@ -122,6 +166,13 @@ class AgentLoop:
                             step_count,
                             tc.name,
                             tool_ms,
+                        )
+                        log_agent(
+                            "loop.tool.rejected",
+                            step=step_count,
+                            tool=tc.name,
+                            tool_ms=f"{tool_ms:.1f}",
+                            error=exec_result.error,
                         )
                         steps.append(
                             LoopStepRecord(
@@ -155,12 +206,23 @@ class AgentLoop:
                     t_tool = time.perf_counter()
                     exec_result = self._tools.execute(tc.name, tc.arguments)
                     tool_ms = (time.perf_counter() - t_tool) * 1000.0
+                    hit_count = len((exec_result.payload or {}).get("chunks") or [])
                     timing_log.info(
                         "timing agent_loop step=%s tool=%s tool_ms=%.1f hit_count=%s",
                         step_count,
                         tc.name,
                         tool_ms,
-                        len((exec_result.payload or {}).get("chunks") or []),
+                        hit_count,
+                    )
+                    log_agent(
+                        "loop.tool.result",
+                        step=step_count,
+                        tool=tc.name,
+                        tool_ms=f"{tool_ms:.1f}",
+                        ok=int(exec_result.ok),
+                        hit_count=hit_count,
+                        content_for_llm_chars=len(exec_result.content_for_llm or ""),
+                        query=(exec_result.payload or {}).get("query"),
                     )
                     if exec_result.used_search:
                         used_search = True
@@ -203,6 +265,12 @@ class AgentLoop:
                         step_count,
                         (time.perf_counter() - step_t0) * 1000.0,
                     )
+                    log_agent(
+                        "loop.step.continue",
+                        step=step_count,
+                        step_ms=f"{(time.perf_counter() - step_t0) * 1000.0:.1f}",
+                        pending_tool_msgs=len(pending_tools),
+                    )
                     continue
 
                 # Final answer
@@ -212,6 +280,15 @@ class AgentLoop:
                     "timing agent_loop done status=completed steps=%s total_ms=%.1f",
                     step_count,
                     (time.perf_counter() - loop_t0) * 1000.0,
+                )
+                log_agent(
+                    "loop.done",
+                    status="completed",
+                    steps=step_count,
+                    used_search=int(used_search),
+                    total_ms=f"{(time.perf_counter() - loop_t0) * 1000.0:.1f}",
+                    reply_chars=len(reply),
+                    reply=snip(reply, 500),
                 )
                 return LoopResult(
                     reply=reply,
@@ -223,6 +300,7 @@ class AgentLoop:
 
             # Max steps exhausted
             t_summary = time.perf_counter()
+            log_agent("loop.force_summary", steps=step_count, max_steps=MAX_STEPS)
             summary = _force_summary(self._llm, history, user_content, pending_tools, used_search)
             timing_log.info(
                 "timing agent_loop force_summary_ms=%.1f total_ms=%.1f",
@@ -231,6 +309,14 @@ class AgentLoop:
             )
             steps.append(
                 LoopStepRecord(step_type="final", payload={"content": summary, "truncated": True})
+            )
+            log_agent(
+                "loop.done",
+                status="truncated",
+                steps=step_count,
+                used_search=int(used_search),
+                total_ms=f"{(time.perf_counter() - loop_t0) * 1000.0:.1f}",
+                reply_chars=len(summary),
             )
             return LoopResult(
                 reply=summary,
@@ -248,6 +334,14 @@ class AgentLoop:
                 (time.perf_counter() - loop_t0) * 1000.0,
                 exc,
             )
+            log_agent(
+                "loop.done",
+                status="error",
+                reason="llm_timeout",
+                steps=step_count,
+                total_ms=f"{(time.perf_counter() - loop_t0) * 1000.0:.1f}",
+                error=str(exc),
+            )
             steps.append(LoopStepRecord(step_type="final", payload={"error": str(exc)}))
             return LoopResult(
                 reply=ERROR_REPLY,
@@ -264,6 +358,14 @@ class AgentLoop:
                 "steps=%s total_ms=%.1f",
                 step_count,
                 (time.perf_counter() - loop_t0) * 1000.0,
+            )
+            log_agent(
+                "loop.done",
+                status="error",
+                reason="unexpected",
+                steps=step_count,
+                total_ms=f"{(time.perf_counter() - loop_t0) * 1000.0:.1f}",
+                error=str(exc),
             )
             steps.append(LoopStepRecord(step_type="final", payload={"error": str(exc)}))
             return LoopResult(

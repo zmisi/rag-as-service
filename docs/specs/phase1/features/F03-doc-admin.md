@@ -16,7 +16,7 @@
 - 上传流程：draft / save / submit for review / publish
 - Tag 分类：News、SOP、Best Practice、Knowledge base、FAQ（可扩展枚举）
 - 版本号从 `1.0` 起
-- 文件类型：`.txt` / `.pdf` / `.docx` / `.pptx`（不支持旧版 `.doc` / `.ppt`，须另存为 OOXML）
+- 文件类型：`.txt` / `.md` / `.pdf` / `.docx` / `.pptx`（不支持旧版 `.doc` / `.ppt`，须另存为 OOXML）
 - 列表、按 tag 过滤、查看当前版本
 - Admin UI 见 [F03-doc-admin-ui.md](F03-doc-admin-ui.md)（左右分栏：左列表 / 右操作）
 

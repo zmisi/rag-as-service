@@ -63,6 +63,14 @@ class Settings(BaseSettings):
         alias="QWEN_BASE_URL",
     )
     qwen_model: str = Field(default="qwen-plus", alias="QWEN_MODEL")
+    # F04temp: when true and QWEN_API_KEY set, use DashScope embeddings; else hashing.
+    qwen_embedding_enabled: bool = Field(default=False, alias="QWEN_EMBEDDING_ENABLED")
+    qwen_embedding_model: str = Field(
+        default="text-embedding-v4",
+        alias="QWEN_EMBEDDING_MODEL",
+    )
+    # F04temp: process index_job inline after publish (convenient for local e2e).
+    index_sync_on_publish: bool = Field(default=True, alias="INDEX_SYNC_ON_PUBLISH")
 
 
 @lru_cache

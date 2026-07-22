@@ -67,7 +67,7 @@ export const STATUS_LABELS: Record<DocStatus, string> = {
   published: "已发布",
 };
 
-export const ALLOWED_EXTENSIONS = [".txt", ".pdf", ".docx", ".pptx"] as const;
+export const ALLOWED_EXTENSIONS = [".txt", ".md", ".pdf", ".docx", ".pptx"] as const;
 
 export const LEGACY_EXTENSIONS = [".doc", ".ppt"] as const;
 
@@ -77,7 +77,7 @@ export const LEGACY_FILE_TYPE_MESSAGE =
   "不支持旧版 .doc / .ppt，请另存为 .docx / .pptx 后再上传";
 
 export const UNSUPPORTED_FILE_TYPE_MESSAGE =
-  "不支持的文件类型，仅允许 .txt / .pdf / .docx / .pptx";
+  "不支持的文件类型，仅允许 .txt / .md / .pdf / .docx / .pptx";
 
 export function tagLabel(tag: string): string {
   return TAG_OPTIONS.find((o) => o.value === tag)?.label ?? tag;

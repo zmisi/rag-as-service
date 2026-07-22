@@ -8,15 +8,15 @@ DOC_TAGS = frozenset(
 
 DOC_STATUSES = frozenset({"draft", "review", "published"})
 
-# Phase 1: OOXML only for Word/PPT. Legacy .doc / .ppt are rejected.
-ALLOWED_EXTENSIONS = frozenset({".txt", ".pdf", ".docx", ".pptx"})
+# Phase 1: OOXML only for Word/PPT; .md as plain text. Legacy .doc / .ppt are rejected.
+ALLOWED_EXTENSIONS = frozenset({".txt", ".md", ".pdf", ".docx", ".pptx"})
 
 LEGACY_EXTENSIONS = frozenset({".doc", ".ppt"})
 
 MAX_FILE_BYTES = 20 * 1024 * 1024
 
 UNSUPPORTED_FILE_TYPE_MESSAGE = (
-    "Unsupported file type. Allowed: .txt, .pdf, .docx, .pptx"
+    "Unsupported file type. Allowed: .txt, .md, .pdf, .docx, .pptx"
 )
 
 LEGACY_FILE_TYPE_MESSAGE = (
