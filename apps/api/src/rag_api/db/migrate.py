@@ -33,11 +33,12 @@ def alembic_config(database_url: str | None = None) -> Config:
 
 
 def run_migrations(*, database_url: str | None = None) -> None:
-    """Apply pending migrations up to head."""
+    """Apply pending migrations up to head(s)."""
     cfg = alembic_config(database_url)
     url = cfg.get_main_option("sqlalchemy.url") or ""
     script = ScriptDirectory.from_config(cfg)
-    head = script.get_current_head()
+    heads = script.get_heads()
+    head_label = heads[0] if len(heads) == 1 else ",".join(heads)
 
     engine = create_engine(
         url,
@@ -62,10 +63,11 @@ def run_migrations(*, database_url: str | None = None) -> None:
         role,
         _redact_url(url),
         current,
-        head,
+        head_label,
     )
-    command.upgrade(cfg, "head")
-    logger.info("Alembic migrations complete (at head=%s)", head)
+    # "heads" applies all branch tips; after merge revision there is a single head.
+    command.upgrade(cfg, "heads")
+    logger.info("Alembic migrations complete (at head=%s)", head_label)
 
 
 def upgrade_head() -> None:
