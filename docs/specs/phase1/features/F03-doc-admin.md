@@ -16,7 +16,7 @@
 - 上传流程：draft / save / submit for review / publish
 - Tag 分类：News、SOP、Best Practice、Knowledge base、FAQ（可扩展枚举）
 - 版本号从 `1.0` 起
-- 文件类型：txt、pdf、word（`.doc`/`.docx`）、ppt（`.ppt`/`.pptx`）
+- 文件类型：`.txt` / `.pdf` / `.docx` / `.pptx`（不支持旧版 `.doc` / `.ppt`，须另存为 OOXML）
 - 列表、按 tag 过滤、查看当前版本
 - Admin UI 见 [F03-doc-admin-ui.md](F03-doc-admin-ui.md)（左右分栏：左列表 / 右操作）
 
@@ -105,7 +105,7 @@ Phase 1 的「审核/校验」= **自动结构校验**（title、tag、文件）
 | 步骤 | 用户操作 | 系统行为 | 校验 |
 |------|----------|----------|------|
 | 1.1 | 点「新建文档」 | 创建 `document`（status=`draft`，version 待定） | — |
-| 1.2 | 选择本地文件（可多选） | 前端校验扩展名与 20MB；通过后上传至存储，写入 `document_file` | 类型、大小（F03-T07/T08） |
+| 1.2 | 选择本地文件（可多选） | 前端校验扩展名与 20MB；通过后上传至存储，写入 `document_file` | 类型、大小（F03-T07/T07b/T08） |
 | 1.3 | 填写 Title、Tag（可选） | 表单本地状态更新 | Tag 若填则须为合法枚举（F03-T06） |
 | 1.4 | 点「保存草稿」 | `PATCH` 持久化 title/tag/文件关联；**status 仍为 `draft`** | 文件规则同上；title/tag 可不填 |
 | 1.5 | 关闭页面后再打开 | 从列表选中，加载已保存的 draft 与文件列表 | — |
@@ -228,7 +228,7 @@ sequenceDiagram
 5. **Publish**：仅 `review` 可 publish → `published`；成功后必须触发索引（F04）。
 6. Tag 为受控枚举（存储值 → 界面展示名）：`news` 公告动态 | `sop` 标准操作规程 | `best_practice` 最佳实践 | `knowledge_base` 知识库 | `faq` 常见问题。填写说明见 [F03-doc-admin-ui.md](F03-doc-admin-ui.md) §字段中文说明。
 7. 版本：首次 publish 为 `1.0`；此后每次从已发布再编辑并重新走完发布流，版本递增（Phase 1：**minor +0.1**，如 1.0→1.1；实现固定一种算法即可）。
-8. 拒绝不支持的 MIME/扩展名；单文件大小上限 **20MB**。
+8. 允许扩展名仅 `.txt` / `.pdf` / `.docx` / `.pptx`；拒绝其它类型（含 `.exe`）及旧版 `.doc` / `.ppt`（须提示另存为 OOXML）；单文件大小上限 **20MB**。
 9. 删除：Phase 1 允许软删除 `deleted_at`；若曾 published，须通知 F04 移除索引（见 F04）。
 10. **`review` 中若修改元数据或文件**：status 回退为 `draft`，须重新 Submit for Review（防止未校验内容直接 publish）。
 11. **Admin UI**：`/admin` 必须为左 List / 右操作分栏；列表支持状态过滤、「对外发布」「对内分享」视图与目录树；右侧承载新建/更新/删除及状态推进（见「Admin UI」与 [F03-doc-admin-ui.md](F03-doc-admin-ui.md)）。
@@ -257,6 +257,7 @@ sequenceDiagram
 | F03-T05 | Given status=`review` When publish | Then status=`published`；version=`1.0`；产生索引任务事件/记录 | api |
 | F03-T06 | Given tag=`unknown` When save | Then 4xx | api |
 | F03-T07 | Given 上传 `.exe` When save | Then 4xx | api |
+| F03-T07b | Given 上传 `.doc` 或 `.ppt` When save | Then 4xx；提示另存为 `.docx` / `.pptx` | api |
 | F03-T08 | Given 文件 >20MB When save | Then 4xx | api |
 | F03-T09 | Given tenant-A 文档 id When tenant-B 成员 GET | Then 404 或 403 | api |
 | F03-T10 | Given 已 published v1.0 When 编辑再 publish | Then 新 version>`1.0`（如 1.1）；旧版本策略在响应中可区分 | api |

@@ -49,8 +49,8 @@ rag-as-service/
 
 | 进程 | 职责 |
 |------|------|
-| `api`（uvicorn） | HTTP；publish 只入队 `index_job` |
-| `worker`（同包异进程） | 消费 `index_job`：解析 / 分块 / embedding / pgvector |
+| `api`（uvicorn） | HTTP；publish 入队 `index_job`；提供 F04 内部 `search`（供 F06） |
+| `worker`（同包异进程） | 消费 `index_job`：解析 / 节树 / leaf embedding / 写 pgvector |
 | `web`（next） | UI；经 `/backend` 调 API |
 
 对象存储：本地 `apps/api/var/storage/`（gitignore），路径由配置注入。
@@ -75,7 +75,7 @@ apps/api/
 │   ├── db/                  # session、models（ORM）
 │   ├── repositories/        # 唯一 DB 访问（查询强制 tenant_id）
 │   ├── services/            # 用例编排
-│   ├── indexing/            # parse / chunk / embed（供 worker）
+│   ├── indexing/            # Docling 解析 / H1-H2 节树 / leaf embed / search（F04）
 │   ├── agent/               # loop / tools / context；加载 prompts/（无前置意图分类）
 │   ├── clients/             # QWen、embedding（可 mock）
 │   └── api/

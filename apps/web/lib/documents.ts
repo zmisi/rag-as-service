@@ -67,24 +67,37 @@ export const STATUS_LABELS: Record<DocStatus, string> = {
   published: "已发布",
 };
 
-export const ALLOWED_EXTENSIONS = [
-  ".txt",
-  ".pdf",
-  ".doc",
-  ".docx",
-  ".ppt",
-  ".pptx",
-];
+export const ALLOWED_EXTENSIONS = [".txt", ".pdf", ".docx", ".pptx"] as const;
+
+export const LEGACY_EXTENSIONS = [".doc", ".ppt"] as const;
 
 export const MAX_FILE_BYTES = 20 * 1024 * 1024;
+
+export const LEGACY_FILE_TYPE_MESSAGE =
+  "不支持旧版 .doc / .ppt，请另存为 .docx / .pptx 后再上传";
+
+export const UNSUPPORTED_FILE_TYPE_MESSAGE =
+  "不支持的文件类型，仅允许 .txt / .pdf / .docx / .pptx";
 
 export function tagLabel(tag: string): string {
   return TAG_OPTIONS.find((o) => o.value === tag)?.label ?? tag;
 }
 
+export function isLegacyFile(name: string): boolean {
+  const lower = name.toLowerCase();
+  if (lower.endsWith(".docx") || lower.endsWith(".pptx")) return false;
+  return LEGACY_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
 export function isAllowedFile(name: string): boolean {
   const lower = name.toLowerCase();
   return ALLOWED_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
+export function fileTypeRejectMessage(name: string): string {
+  return isLegacyFile(name)
+    ? LEGACY_FILE_TYPE_MESSAGE
+    : UNSUPPORTED_FILE_TYPE_MESSAGE;
 }
 
 export function formatBytes(n: number): string {

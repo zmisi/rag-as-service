@@ -21,3 +21,9 @@ Phase 1 Spec 见 [../phase1/](../phase1/)。根本约束见 [00-constraints.mdc]
 - 表面：`{subdomain}.lxzxai.com/api`
 - 用途：租户将 RAG/能力整合进自有系统（鉴权、限流、稳定契约）。
 - Phase 1 不暴露此路径；内部 F04 search / F06 调用不算对外 API。
+
+## Phase 1.5 / 2 — 索引增强（相对 F04）
+
+- **OCR** / 扫描件识别（Phase 1：`do_ocr=false`；无字 PDF 空成功）。
+- **任意深**目录树（Phase 1 仅 H1/H2）。
+- 可选：检索返回可配置 expand 到 H1 祖先全文等。

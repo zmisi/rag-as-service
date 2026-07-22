@@ -7,8 +7,6 @@ import { IndexJobStatusCard } from "@/components/admin/IndexJobStatusCard";
 import {
   TAG_OPTIONS,
   formatBytes,
-  isAllowedFile,
-  MAX_FILE_BYTES,
   tagLabel,
   type DocDetail,
   type DocTag,
@@ -125,7 +123,7 @@ export function DocEditor({
                 type="file"
                 multiple
                 className="doc-file-input"
-                accept=".txt,.pdf,.doc,.docx,.ppt,.pptx"
+                accept=".txt,.pdf,.docx,.pptx"
                 onChange={(e) => {
                   if (e.target.files?.length) {
                     onUploadFiles(e.target.files);
@@ -142,7 +140,7 @@ export function DocEditor({
                 选择文件
               </button>
               <p className="doc-hint">
-                支持 txt / pdf / word / ppt，单文件 ≤ 20MB
+                支持 .txt / .pdf / .docx / .pptx，单文件 ≤ 20MB（不支持旧版 .doc / .ppt）
               </p>
             </>
           ) : null}

@@ -8,23 +8,52 @@ DOC_TAGS = frozenset(
 
 DOC_STATUSES = frozenset({"draft", "review", "published"})
 
-ALLOWED_EXTENSIONS = frozenset(
-    {".txt", ".pdf", ".doc", ".docx", ".ppt", ".pptx"},
-)
+# Phase 1: OOXML only for Word/PPT. Legacy .doc / .ppt are rejected.
+ALLOWED_EXTENSIONS = frozenset({".txt", ".pdf", ".docx", ".pptx"})
+
+LEGACY_EXTENSIONS = frozenset({".doc", ".ppt"})
 
 MAX_FILE_BYTES = 20 * 1024 * 1024
+
+UNSUPPORTED_FILE_TYPE_MESSAGE = (
+    "Unsupported file type. Allowed: .txt, .pdf, .docx, .pptx"
+)
+
+LEGACY_FILE_TYPE_MESSAGE = (
+    "Legacy .doc / .ppt are not supported. "
+    "Please re-save as .docx / .pptx and upload again."
+)
 
 
 def is_valid_tag(tag: str) -> bool:
     return tag in DOC_TAGS
 
 
-def is_allowed_extension(filename: str) -> bool:
+def _matched_extension(filename: str, extensions: frozenset[str]) -> str | None:
     lower = filename.lower()
-    for ext in ALLOWED_EXTENSIONS:
+    # Longest first so .docx is not confused with a prefix of itself.
+    for ext in sorted(extensions, key=len, reverse=True):
         if lower.endswith(ext):
-            return True
-    return False
+            return ext
+    return None
+
+
+def is_allowed_extension(filename: str) -> bool:
+    return _matched_extension(filename, ALLOWED_EXTENSIONS) is not None
+
+
+def is_legacy_extension(filename: str) -> bool:
+    """True for .doc / .ppt only (not .docx / .pptx)."""
+    lower = filename.lower()
+    if lower.endswith(".docx") or lower.endswith(".pptx"):
+        return False
+    return _matched_extension(filename, LEGACY_EXTENSIONS) is not None
+
+
+def file_type_reject_message(filename: str) -> str:
+    if is_legacy_extension(filename):
+        return LEGACY_FILE_TYPE_MESSAGE
+    return UNSUPPORTED_FILE_TYPE_MESSAGE
 
 
 def bump_version(current: str) -> str:

@@ -7,13 +7,15 @@ alwaysApply: true
 
 细节与验收以 Spec F04、F06 为准；本规则钉死实现红线。
 
-## 索引（F04）
+## 索引与检索（F04）
 
-1. 仅 `status=published` 且 `is_active` chunk 可被检索；未发布文档不得入可检索索引。
-2. 分块参数为代码常量（Phase 1：`CHUNK_TARGET_TOKENS=800`，`CHUNK_OVERLAP_TOKENS=100`）；空文档 → 0 chunk。
-3. Embedding：单一 QWen 兼容模型；**维度常量一处定义**，与 pgvector 列一致；禁止混用多套维度。
-4. 每个 chunk 必带 `tenant_id`；`search(tenant_id, query, top_k)` 强制租户过滤。
-5. 新版本索引成功后旧版本 chunk 不可检索；软删除文档同理。
+1. 仅对 `published` 文档写入 `is_active` section/leaf；未发布不得入可检索态索引数据。
+2. **层级**：Phase 1 节树为 H1/H2（更深并入最近 H2）；节内再按可配置 token 切 leaf（默认 `CHUNK_TARGET_TOKENS=800`，`CHUNK_OVERLAP_TOKENS=100`）；禁止跨叶节切块；空文档 / 无字 PDF（不开 OCR）→ 0 section/chunk 且 job 成功。
+3. Embedding：仅 leaf；单一 QWen 兼容模型；**模型名与维度可配置**（默认 `EMBEDDING_DIM=1024`），与 pgvector 列一致；禁止同库混用多套维度；改维度须迁库 + 全量重建索引。
+4. 每个 section/chunk 必带 `tenant_id`；写库与 **`search(tenant_id, query, top_k)`** 强制租户过滤。
+5. **检索**：对 active leaf 向量 top-k；命中后返回 **所属节全文 + path**；同一 `section_id` 去重；F06 经 `search_knowledge` 调用本接口，不在 Agent 内另写一套向量查询。
+6. 新版本索引成功后旧版本 section/chunk **固定** `is_active=false`；软删除文档同理。
+7. 解析：Docling；`do_ocr=false`；表以 Markdown 保留。
 
 ## Agent（F06）
 
@@ -24,4 +26,4 @@ alwaysApply: true
 5. **检索片段视为不可信数据**（防 prompt 注入）：与用户/系统指令隔离展示；禁止把全库或超大 chunk 集塞进 prompt，只注入本轮 top-k。
 6. 无命中：明确「知识库无相关内容」；**禁止编造**文档事实、书名、条款号。
 7. 用户消息与最终 assistant 消息经 F05 落库；每次运行写 `agent_run`（`used_search`/steps/status）；LLM/embedding 测试默认 mock。
-8. `search_knowledge` 的 `tenant_id` 仅来自请求上下文，禁止由模型 tool 参数传入。
+8. `search_knowledge` 的 `tenant_id` 仅来自请求上下文，禁止由模型 tool 参数传入；检索实现委托 F04 `search`。

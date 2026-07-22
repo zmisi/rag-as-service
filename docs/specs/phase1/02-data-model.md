@@ -2,7 +2,7 @@
 
 > 生产级多租户：**`rag_service` schema** 内共享表，业务行以 `tenant_id` 隔离（Shared Schema / Discriminator）。  
 > 对齐 F01–F06 与 [00-constraints.mdc](../../../.cursor/rules/00-constraints.mdc)。  
-> 向量列依赖扩展 **`pgvector`**。Embedding 维度固定为常量 **`EMBEDDING_DIM=1024`**（须与所选 QWen embedding 模型一致；换模型须迁库）。
+> 向量列依赖扩展 **`pgvector`**。Embedding **模型与维度可配置**（Settings / 环境变量，默认 `EMBEDDING_DIM=1024`）；列类型为 `vector(EMBEDDING_DIM)`，须与所选 QWen embedding 模型一致。**变更维度须迁库并全量重建索引**；同一库内禁止混用多套维度。
 
 ## 1. 设计原则
 
@@ -59,6 +59,9 @@ erDiagram
   documents ||--o{ document_files : has
   documents ||--o{ index_jobs : indexes
   tenants ||--o{ index_jobs : scopes
+  documents ||--o{ document_sections : sectioned
+  tenants ||--o{ document_sections : scopes
+  document_sections ||--o{ document_chunks : leaves
   documents ||--o{ document_chunks : chunked
   tenants ||--o{ document_chunks : scopes
   tenants ||--o{ conversations : owns
@@ -110,11 +113,21 @@ erDiagram
     uuid document_id FK
     text status
   }
+  document_sections {
+    uuid id PK
+    uuid tenant_id FK
+    uuid document_id FK
+    text path
+    text content
+    bool is_active
+  }
   document_chunks {
     uuid id PK
     uuid tenant_id FK
     uuid document_id FK
+    uuid section_id FK
     vector embedding
+    bool is_active
   }
   conversations {
     uuid id PK
@@ -154,7 +167,8 @@ erDiagram
 | 知识库 | `documents` | F03 | 文档元数据与状态机 |
 | | `document_files` | F03 | 源文件对象 |
 | 索引 | `index_jobs` | F04 | 索引任务队列 |
-| | `document_chunks` | F04 | 分块 + embedding |
+| | `document_sections` | F04 | H1/H2 节（全文 + path；供检索返回） |
+| | `document_chunks` | F04 | 节内 leaf + embedding（仅 leaf 向量化） |
 | 对话 | `conversations` | F05 | 聊天会话 |
 | | `messages` | F05/F06 | 消息（含 tool meta） |
 | Agent | `agent_runs` | F06 | 单次 Agent 运行 |
@@ -260,7 +274,7 @@ erDiagram
 
 ### 4.6 `document_files` — 文档源文件
 
-**表注释**：文档关联的存储对象；单文件 ≤20MB；类型限 txt/pdf/word/ppt。
+**表注释**：文档关联的存储对象；单文件 ≤20MB；类型限 `.txt`/`.pdf`/`.docx`/`.pptx`（不含旧版 `.doc`/`.ppt`）。
 
 | 字段 | 类型 | 约束 | 注释 |
 |------|------|------|------|
@@ -301,36 +315,63 @@ erDiagram
 
 ---
 
-### 4.8 `document_chunks` — 文档分块与向量
+### 4.8 `document_sections` — 文档节（H1/H2）
 
-**表注释**：可检索文本块；仅 `is_active=true` 且对应文档仍 published 且未删除者可被 RAG 命中；新版本索引成功后旧版本 `is_active=false`。
+**表注释**：层级节节点；Phase 1 深度为 H1/H2；存储节全文与 `path`，供 F04 search 在命中 leaf 后返回给 Agent；新版本或软删后旧节 `is_active=false`。
 
 | 字段 | 类型 | 约束 | 注释 |
 |------|------|------|------|
-| `id` | `uuid` | PK | 分块主键 |
-| `tenant_id` | `uuid` | NOT NULL FK → `tenants.id` | 所属租户（检索强制过滤） |
+| `id` | `uuid` | PK | 节主键 |
+| `tenant_id` | `uuid` | NOT NULL FK → `tenants.id` | 所属租户 |
 | `document_id` | `uuid` | NOT NULL FK → `documents.id` | 来源文档 |
 | `version` | `text` | NOT NULL | 文档版本 |
-| `ordinal` | `int` | NOT NULL | 块序号（从 0 递增） |
-| `content` | `text` | NOT NULL | 块文本内容 |
-| `token_count` | `int` | NULL | 估算 token 数（可选，便于调试） |
-| `embedding` | `vector(1024)` | NOT NULL | Embedding；维度=`EMBEDDING_DIM` |
-| `is_active` | `boolean` | NOT NULL DEFAULT true | 是否可被检索 |
+| `parent_id` | `uuid` | NULL FK → `document_sections.id` | H2 指向所属 H1；顶层 H1 / 单节为 NULL |
+| `level` | `int` | NOT NULL | `1`=H1，`2`=H2（叶节通常为 2，或无子时的 1） |
+| `title` | `text` | NOT NULL | 节标题；无标题单节可用文档 title/文件名 |
+| `path` | `text` | NOT NULL | 展示路径，如 `退款政策 > 时效` |
+| `content` | `text` | NOT NULL | **节全文**（含 Markdown 表）；search 返回此字段 |
+| `ordinal` | `int` | NOT NULL | 同文档版本内顺序 |
+| `is_active` | `boolean` | NOT NULL DEFAULT true | 是否可被检索路径引用 |
 | `create_at` | `timestamp` | NOT NULL DEFAULT now() | 写入时间 |
 | `update_at` | `timestamp` | NOT NULL DEFAULT now() | 最后修改时间 |
 
 **约束**：`UNIQUE (document_id, version, ordinal)`。  
+**索引**：`(tenant_id, is_active)` WHERE `is_active = true`；`(document_id, version)`。
+
+---
+
+### 4.9 `document_chunks` — 节内 leaf 与向量
+
+**表注释**：叶节内的可向量化文本块；**仅 leaf 含 embedding**；向量检索命中后通过 `section_id` 取节全文 + path 返回（见 F04）；新版本/软删后 `is_active=false`。
+
+| 字段 | 类型 | 约束 | 注释 |
+|------|------|------|------|
+| `id` | `uuid` | PK | leaf 主键 |
+| `tenant_id` | `uuid` | NOT NULL FK → `tenants.id` | 所属租户（检索强制过滤） |
+| `document_id` | `uuid` | NOT NULL FK → `documents.id` | 来源文档 |
+| `version` | `text` | NOT NULL | 文档版本 |
+| `section_id` | `uuid` | NOT NULL FK → `document_sections.id` | 所属叶节 |
+| `ordinal` | `int` | NOT NULL | 节内块序号（从 0 递增） |
+| `content` | `text` | NOT NULL | leaf 文本（用于 embedding；一般不直接作为 Agent 上下文） |
+| `token_count` | `int` | NULL | 估算 token 数（可选） |
+| `embedding` | `vector(N)` | NOT NULL | Embedding；`N`=`EMBEDDING_DIM`（可配置，默认 1024） |
+| `is_active` | `boolean` | NOT NULL DEFAULT true | 是否参与向量检索 |
+| `create_at` | `timestamp` | NOT NULL DEFAULT now() | 写入时间 |
+| `update_at` | `timestamp` | NOT NULL DEFAULT now() | 最后修改时间 |
+
+**约束**：`UNIQUE (section_id, ordinal)`。  
 **索引**：
 
 - `(tenant_id, is_active)` WHERE `is_active = true`
 - `(document_id, version)`
+- `(section_id)`
 - **向量**：`USING ivfflat (embedding vector_cosine_ops)` 或 `hnsw`（数据量起来后建；Phase 1 可先精确搜再加）
 
-检索伪条件：`tenant_id = :tid AND is_active AND ... ORDER BY embedding <=> :q LIMIT :k`。
+检索：在 active leaf 上向量 top-k（**F04 `search` 实现**），再 join `document_sections` 取 `path` + 节 `content`；同一 `section_id` 结果去重保留最高分。
 
 ---
 
-### 4.9 `conversations` — 聊天会话
+### 4.10 `conversations` — 聊天会话
 
 **表注释**：租户内用户的对话会话；默认列表仅 `active`；归档后不可发消息（4xx）。
 
@@ -349,7 +390,7 @@ erDiagram
 
 ---
 
-### 4.10 `messages` — 会话消息
+### 4.11 `messages` — 会话消息
 
 **表注释**：会话消息流；含 user/assistant/system/tool；排序按 `create_at` 升序；tool 轨迹可写入 `meta`。
 
@@ -369,7 +410,7 @@ erDiagram
 
 ---
 
-### 4.11 `agent_runs` — Agent 运行
+### 4.12 `agent_runs` — Agent 运行
 
 **表注释**：一次用户提问触发的 Agent 执行记录；用于是否检索、步数、终态可测查询。无前置意图分类。
 
@@ -390,7 +431,7 @@ erDiagram
 
 ---
 
-### 4.12 `agent_run_steps` — Agent 步骤轨迹
+### 4.13 `agent_run_steps` — Agent 步骤轨迹
 
 **表注释**：Agent Loop 逐步轨迹（模型输出 / tool_call / tool_result）；满足 F06「轨迹可被测试查询」。
 
@@ -424,6 +465,7 @@ erDiagram
 | `documents` | `tr_documents_lmt` |
 | `document_files` | `tr_document_files_lmt` |
 | `index_jobs` | `tr_index_jobs_lmt` |
+| `document_sections` | `tr_document_sections_lmt` |
 | `document_chunks` | `tr_document_chunks_lmt` |
 | `conversations` | `tr_conversations_lmt` |
 | `messages` | `tr_messages_lmt` |
@@ -437,7 +479,9 @@ erDiagram
 | `tenant_members` → tenants/users | `CASCADE` / `CASCADE` |
 | `sessions` → users | `CASCADE` |
 | 租户下属业务表 → tenants | `CASCADE`（删租户清数据；Phase 1 慎用硬删） |
-| `document_files` / `index_jobs` / `document_chunks` → documents | `CASCADE` |
+| `document_files` / `index_jobs` / `document_sections` / `document_chunks` → documents | `CASCADE` |
+| `document_chunks` → `document_sections` | `CASCADE` |
+| `document_sections.parent_id` → `document_sections` | `CASCADE` |
 | `messages` / `agent_runs` → conversations | `CASCADE` |
 | `agent_run_steps` → agent_runs | `CASCADE` |
 | `documents.created_by` → users | `RESTRICT` |
@@ -450,7 +494,7 @@ erDiagram
 ## 6. 租户隔离检查清单（实现）
 
 1. 除 `users`、`sessions` 外，读写必带 `tenant_id`（`sessions` 经 user→member 校验 Host 租户）。  
-2. `document_chunks` 检索：**SQL 层** `WHERE tenant_id = :current`，禁止先搜后滤。  
+2. `document_chunks` 向量检索与 `document_sections` 读取：**SQL 层** `WHERE tenant_id = :current`，禁止先搜后滤。  
 3. 所有租户表建议复合索引前缀含 `tenant_id`。  
 4. Repository 基类强制注入 `tenant_id`（见架构分层）。
 
@@ -463,7 +507,7 @@ erDiagram
 | F01 | `users`, `tenants`, `tenant_members` |
 | F02 | `sessions` + members 校验 |
 | F03 | `documents`, `document_files` |
-| F04 | `index_jobs`, `document_chunks` |
+| F04 | `index_jobs`, `document_sections`, `document_chunks` |
 | F05 | `conversations`, `messages` |
 | F06 | `agent_runs`, `agent_run_steps`, `messages.meta` |
 

@@ -16,7 +16,7 @@ import {
   uploadDocumentFile,
 } from "@/lib/api";
 import type { DocDetail, DocSummary, DocTag, IndexJobStatus } from "@/lib/documents";
-import { isAllowedFile, MAX_FILE_BYTES } from "@/lib/documents";
+import { fileTypeRejectMessage, isAllowedFile, MAX_FILE_BYTES } from "@/lib/documents";
 
 export function DocAdminWorkspace() {
   const [documents, setDocuments] = useState<DocSummary[]>([]);
@@ -185,7 +185,7 @@ export function DocAdminWorkspace() {
     try {
       for (const file of Array.from(files)) {
         if (!isAllowedFile(file.name)) {
-          throw new Error(`不支持的文件类型：${file.name}`);
+          throw new Error(`${fileTypeRejectMessage(file.name)}：${file.name}`);
         }
         if (file.size > MAX_FILE_BYTES) {
           throw new Error(`文件超过 20MB：${file.name}`);

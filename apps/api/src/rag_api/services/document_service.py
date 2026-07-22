@@ -12,6 +12,7 @@ from rag_api.db.models import Document, DocumentFile, IndexJob
 from rag_api.domain.documents.constants import (
     MAX_FILE_BYTES,
     bump_version,
+    file_type_reject_message,
     is_allowed_extension,
     is_valid_tag,
 )
@@ -125,7 +126,10 @@ def add_file(
     if len(data) > MAX_FILE_BYTES:
         raise HTTPException(status_code=400, detail="File exceeds 20MB limit")
     if not is_allowed_extension(filename):
-        raise HTTPException(status_code=400, detail="Unsupported file type")
+        raise HTTPException(
+            status_code=400,
+            detail=file_type_reject_message(filename),
+        )
 
     doc = _get_document(db, document_id=document_id, tenant_id=tenant_id)
     if doc.status == "published":
