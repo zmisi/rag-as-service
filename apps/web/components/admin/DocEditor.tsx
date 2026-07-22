@@ -7,6 +7,7 @@ import { IndexJobStatusCard } from "@/components/admin/IndexJobStatusCard";
 import {
   TAG_OPTIONS,
   formatBytes,
+  formatVersionDisplay,
   tagLabel,
   type DocDetail,
   type DocTag,
@@ -66,7 +67,7 @@ export function DocEditor({
       "",
       `标题：${title.trim() || doc.title}`,
       `分类：${tag ? tagLabel(tag) : "—"}`,
-      `版本：${doc.version === "0.0" ? "1.0（首版）" : doc.version}`,
+      `版本：${formatVersionDisplay(doc.version)}`,
       `文件：${doc.files.length} 个`,
       "",
       "发布后将建立知识库索引，供 AI 问答检索。",
@@ -208,9 +209,9 @@ export function DocEditor({
         ) : null}
       </div>
 
-      {doc.version !== "0.0" ? (
-        <p className="doc-version-line">当前版本：v{doc.version}</p>
-      ) : null}
+      <p className="doc-version-line">
+        当前版本：{formatVersionDisplay(doc.version)}
+      </p>
 
       <IndexJobStatusCard
         job={indexJob}

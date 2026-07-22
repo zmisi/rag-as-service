@@ -24,7 +24,7 @@ class IndexJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey(f"{RAG_SCHEMA}.documents.id", ondelete="CASCADE"),
         nullable=False,
     )
-    version: Mapped[str] = mapped_column(Text, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="pending")
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

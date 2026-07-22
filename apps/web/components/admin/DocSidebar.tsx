@@ -3,6 +3,7 @@
 import {
   STATUS_LABELS,
   TAG_TABS,
+  formatVersionDisplay,
   type DocSummary,
   type DocTag,
   tagLabel,
@@ -94,9 +95,9 @@ export function DocSidebar({
                   <span className={`badge status-${doc.status}`}>
                     {STATUS_LABELS[doc.status]}
                   </span>
-                  {doc.version !== "0.0" ? (
-                    <span className="doc-version">v{doc.version}</span>
-                  ) : null}
+                  <span className="doc-version">
+                    {formatVersionDisplay(doc.version)}
+                  </span>
                 </span>
                 {doc.tag ? (
                   <span className="doc-list-tag">{tagLabel(doc.tag)}</span>

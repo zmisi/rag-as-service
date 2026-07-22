@@ -4,6 +4,7 @@ from rag_api.db.models.conversation import Conversation
 from rag_api.db.models.document import Document
 from rag_api.db.models.document_chunk import DocumentChunk
 from rag_api.db.models.document_file import DocumentFile
+from rag_api.db.models.document_section import DocumentSection
 from rag_api.db.models.index_job import IndexJob
 from rag_api.db.models.message import Message
 from rag_api.db.models.session import Session
@@ -19,6 +20,7 @@ __all__ = [
     "Document",
     "DocumentChunk",
     "DocumentFile",
+    "DocumentSection",
     "IndexJob",
     "Message",
     "Session",

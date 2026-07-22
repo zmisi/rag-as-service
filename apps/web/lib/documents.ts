@@ -1,5 +1,7 @@
 export type DocStatus = "draft" | "review" | "published";
 
+export type IndexStatus = "pending" | "processing" | "ready" | "failed";
+
 export type DocTag =
   | "news"
   | "sop"
@@ -10,10 +12,14 @@ export type DocTag =
 export type DocSummary = {
   id: string;
   tenant_id: string;
+  document_group_id?: string;
   title: string;
   tag: string;
   status: DocStatus;
-  version: string;
+  publish_status?: DocStatus;
+  index_status?: IndexStatus;
+  version: number;
+  is_latest?: boolean;
   create_at: string;
   update_at: string;
 };
@@ -23,7 +29,7 @@ export type DocFile = {
   filename: string;
   content_type: string;
   size_bytes: number;
-  version: string;
+  version: number;
   create_at: string;
   update_at: string;
 };
@@ -81,6 +87,10 @@ export const UNSUPPORTED_FILE_TYPE_MESSAGE =
 
 export function tagLabel(tag: string): string {
   return TAG_OPTIONS.find((o) => o.value === tag)?.label ?? tag;
+}
+
+export function formatVersionDisplay(version: number): string {
+  return `v${version}`;
 }
 
 export function isLegacyFile(name: string): boolean {

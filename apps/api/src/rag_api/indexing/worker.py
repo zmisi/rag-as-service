@@ -1,7 +1,8 @@
-"""Index job worker: parse → chunk → embed → write pgvector chunks."""
+"""Index job worker: parse → H1/H2 sections → leaf chunk → embed → pgvector."""
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
@@ -9,10 +10,12 @@ from uuid import UUID, uuid4
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session, selectinload
 
+from rag_api.config import get_settings
 from rag_api.db.models import Document, IndexJob
 from rag_api.indexing.chunker import chunk_text
 from rag_api.indexing.embedding import Embedder, get_embedder
-from rag_api.indexing.parse import ParseError, extract_text
+from rag_api.indexing.parse import DocumentParser, ParseError, parse_files_to_markdown
+from rag_api.indexing.sections import SectionDraft, build_section_tree
 from rag_api.services.storage_service import StorageService
 
 logger = logging.getLogger(__name__)
@@ -26,7 +29,24 @@ def _vector_literal(vec: list[float]) -> str:
     return "[" + ",".join(f"{x:.8f}" for x in vec) + "]"
 
 
-def deactivate_document_chunks(
+def _heading_path(path: str) -> list[str]:
+    parts = [p.strip() for p in (path or "").split(" > ") if p.strip()]
+    return parts
+
+
+def _pg_text_array_literal(parts: list[str]) -> str:
+    """Format a Python list as a PostgreSQL text[] literal."""
+    escaped: list[str] = []
+    for p in parts:
+        escaped.append('"' + p.replace("\\", "\\\\").replace('"', '\\"') + '"')
+    return "{" + ",".join(escaped) + "}"
+
+
+def _sha256_text(content: str) -> str:
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
+def mark_chunks_not_latest(
     db: Session,
     *,
     tenant_id: UUID,
@@ -36,15 +56,191 @@ def deactivate_document_chunks(
         text(
             """
             UPDATE rag_service.document_chunks
-            SET is_active = false
+            SET is_latest = false
             WHERE tenant_id = :tenant_id
               AND document_id = :document_id
-              AND is_active = true
+              AND is_latest = true
             """
         ),
         {"tenant_id": str(tenant_id), "document_id": str(document_id)},
     )
     return int(result.rowcount or 0)
+
+
+def mark_sections_not_latest(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    document_id: UUID,
+) -> int:
+    result = db.execute(
+        text(
+            """
+            UPDATE rag_service.document_sections
+            SET is_latest = false
+            WHERE tenant_id = :tenant_id
+              AND document_id = :document_id
+              AND is_latest = true
+            """
+        ),
+        {"tenant_id": str(tenant_id), "document_id": str(document_id)},
+    )
+    return int(result.rowcount or 0)
+
+
+def mark_document_index_not_latest(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    document_id: UUID,
+) -> None:
+    mark_chunks_not_latest(db, tenant_id=tenant_id, document_id=document_id)
+    mark_sections_not_latest(db, tenant_id=tenant_id, document_id=document_id)
+
+
+# Back-compat aliases for callers still using deactivate_* names.
+deactivate_document_chunks = mark_chunks_not_latest
+deactivate_document_sections = mark_sections_not_latest
+deactivate_document_index = mark_document_index_not_latest
+
+
+def _mark_other_group_versions_not_latest(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    document_group_id: UUID,
+    keep_document_id: UUID,
+) -> None:
+    others = list(
+        db.scalars(
+            select(Document).where(
+                Document.tenant_id == tenant_id,
+                Document.document_group_id == document_group_id,
+                Document.id != keep_document_id,
+            )
+        ).all()
+    )
+    for other in others:
+        other.is_latest = False
+        mark_document_index_not_latest(
+            db, tenant_id=tenant_id, document_id=other.id
+        )
+
+
+def _persist_sections_and_leaves(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    document_id: UUID,
+    drafts: list[SectionDraft],
+    embedder: Embedder,
+    target_tokens: int,
+    overlap_tokens: int,
+) -> int:
+    """Insert sections + leaf chunks. Returns leaf count."""
+    h1_ids: dict[str, str] = {}
+    leaf_count = 0
+    all_leaf_texts: list[tuple[str, str, list[str]]] = []  # section_id, content, heading_path
+    chunk_index = 0
+
+    for section_index, draft in enumerate(drafts):
+        section_id = str(uuid4())
+        parent_id = None
+        if draft.level == 2 and draft.h1_title and draft.h1_title in h1_ids:
+            parent_id = h1_ids[draft.h1_title]
+        db.execute(
+            text(
+                """
+                INSERT INTO rag_service.document_sections
+                  (id, tenant_id, document_id, parent_id, level, title, path,
+                   content, section_index, is_latest)
+                VALUES
+                  (
+                    CAST(:id AS uuid),
+                    CAST(:tenant_id AS uuid),
+                    CAST(:document_id AS uuid),
+                    CAST(:parent_id AS uuid),
+                    :level,
+                    :title,
+                    :path,
+                    :content,
+                    :section_index,
+                    true
+                  )
+                """
+            ),
+            {
+                "id": section_id,
+                "tenant_id": str(tenant_id),
+                "document_id": str(document_id),
+                "parent_id": parent_id,
+                "level": str(draft.level),
+                "title": draft.title,
+                "path": draft.path,
+                "content": draft.content,
+                "section_index": section_index,
+            },
+        )
+        if draft.level == 1:
+            h1_ids[draft.title] = section_id
+
+        pieces = chunk_text(
+            draft.content,
+            target_tokens=target_tokens,
+            overlap_tokens=overlap_tokens,
+        )
+        heading = _heading_path(draft.path)
+        for piece in pieces:
+            all_leaf_texts.append((section_id, piece, heading))
+
+    if not all_leaf_texts:
+        return 0
+
+    vectors = embedder.embed([t[1] for t in all_leaf_texts])
+    for (section_id, content, heading), vec in zip(
+        all_leaf_texts, vectors, strict=True
+    ):
+        db.execute(
+            text(
+                """
+                INSERT INTO rag_service.document_chunks
+                  (id, tenant_id, document_id, section_id, chunk_index, heading_path,
+                   content, embedding_text, chunk_type, content_hash, embedding,
+                   metadata_, is_latest)
+                VALUES
+                  (
+                    CAST(:id AS uuid),
+                    CAST(:tenant_id AS uuid),
+                    CAST(:document_id AS uuid),
+                    CAST(:section_id AS uuid),
+                    :chunk_index,
+                    CAST(:heading_path AS text[]),
+                    :content,
+                    :embedding_text,
+                    'text',
+                    :content_hash,
+                    CAST(:embedding AS vector),
+                    '{}'::jsonb,
+                    true
+                  )
+                """
+            ),
+            {
+                "id": str(uuid4()),
+                "tenant_id": str(tenant_id),
+                "document_id": str(document_id),
+                "section_id": section_id,
+                "chunk_index": chunk_index,
+                "heading_path": _pg_text_array_literal(heading),
+                "content": content,
+                "embedding_text": content,
+                "content_hash": _sha256_text(content),
+                "embedding": _vector_literal(vec),
+            },
+        )
+        chunk_index += 1
+        leaf_count += 1
+    return leaf_count
 
 
 def process_index_job(
@@ -53,6 +249,7 @@ def process_index_job(
     *,
     embedder: Embedder | None = None,
     storage: StorageService | None = None,
+    parser: DocumentParser | None = None,
 ) -> IndexJob:
     job = db.get(IndexJob, job_id)
     if job is None:
@@ -64,6 +261,7 @@ def process_index_job(
     job.error = None
     db.commit()
 
+    settings = get_settings()
     embedder = embedder or get_embedder()
     storage = storage or StorageService()
 
@@ -75,9 +273,9 @@ def process_index_job(
         )
         if doc is None:
             raise ParseError("document missing")
-        if doc.status != "published" or doc.deleted_at is not None:
-            # Spec F04-T02: no active chunks for non-published
-            deactivate_document_chunks(
+
+        if doc.publish_status != "published" or doc.deleted_at is not None:
+            mark_document_index_not_latest(
                 db, tenant_id=job.tenant_id, document_id=job.document_id
             )
             job.status = "succeeded"
@@ -87,67 +285,121 @@ def process_index_job(
             db.refresh(job)
             return job
 
+        doc.index_status = "processing"
+        doc.error_message = None
+        db.commit()
+
+        # Same-tenant content hash skip (ready duplicate elsewhere).
+        if doc.content_sha256:
+            dup = db.scalar(
+                select(Document)
+                .where(
+                    Document.tenant_id == job.tenant_id,
+                    Document.content_sha256 == doc.content_sha256,
+                    Document.index_status == "ready",
+                    Document.is_latest.is_(True),
+                    Document.deleted_at.is_(None),
+                    Document.id != doc.id,
+                )
+                .limit(1)
+            )
+            if dup is not None:
+                doc.index_status = "ready"
+                doc.error_message = None
+                doc.is_latest = True
+                _mark_other_group_versions_not_latest(
+                    db,
+                    tenant_id=job.tenant_id,
+                    document_group_id=doc.document_group_id,
+                    keep_document_id=doc.id,
+                )
+                job.status = "succeeded"
+                job.finished_at = _now()
+                job.error = "skipped: duplicate content_sha256 in tenant"
+                db.commit()
+                db.refresh(job)
+                return job
+
         files = [f for f in doc.files if f.version == job.version]
         if not files:
             files = list(doc.files)
         if not files:
             raise ParseError("no files attached")
 
-        texts: list[str] = []
+        payloads: list[tuple[str, bytes]] = []
         for f in files:
             raw = storage.read_bytes(f.storage_key)
-            texts.append(extract_text(f.filename, raw))
-        combined = "\n\n".join(t for t in texts if t.strip()).strip()
-        pieces = chunk_text(combined)
+            payloads.append((f.filename, raw))
 
-        # Replace prior versions for this document
-        deactivate_document_chunks(
+        markdown = parse_files_to_markdown(payloads, parser=parser)
+        title_fallback = (doc.title or "").strip() or (
+            files[0].filename if files else "文档"
+        )
+        drafts = build_section_tree(markdown, title_fallback=title_fallback)
+
+        # Clear any prior index rows for this version document_id before rewrite.
+        mark_document_index_not_latest(
             db, tenant_id=job.tenant_id, document_id=job.document_id
         )
+        db.execute(
+            text(
+                """
+                DELETE FROM rag_service.document_chunks
+                WHERE tenant_id = CAST(:tenant_id AS uuid)
+                  AND document_id = CAST(:document_id AS uuid)
+                """
+            ),
+            {"tenant_id": str(job.tenant_id), "document_id": str(job.document_id)},
+        )
+        db.execute(
+            text(
+                """
+                DELETE FROM rag_service.document_sections
+                WHERE tenant_id = CAST(:tenant_id AS uuid)
+                  AND document_id = CAST(:document_id AS uuid)
+                """
+            ),
+            {"tenant_id": str(job.tenant_id), "document_id": str(job.document_id)},
+        )
 
-        if pieces:
-            vectors = embedder.embed(pieces)
-            for ordinal, (content, vec) in enumerate(zip(pieces, vectors, strict=True)):
-                chunk_id = str(uuid4())
-                db.execute(
-                    text(
-                        """
-                        INSERT INTO rag_service.document_chunks
-                          (id, tenant_id, document_id, version, ordinal, content, embedding, is_active)
-                        VALUES
-                          (
-                            CAST(:id AS uuid),
-                            CAST(:tenant_id AS uuid),
-                            CAST(:document_id AS uuid),
-                            :version,
-                            :ordinal,
-                            :content,
-                            CAST(:embedding AS vector),
-                            true
-                          )
-                        """
-                    ),
-                    {
-                        "id": chunk_id,
-                        "tenant_id": str(job.tenant_id),
-                        "document_id": str(job.document_id),
-                        "version": job.version,
-                        "ordinal": ordinal,
-                        "content": content,
-                        "embedding": _vector_literal(vec),
-                    },
-                )
+        leaf_count = 0
+        if drafts:
+            leaf_count = _persist_sections_and_leaves(
+                db,
+                tenant_id=job.tenant_id,
+                document_id=job.document_id,
+                drafts=drafts,
+                embedder=embedder,
+                target_tokens=settings.chunk_target_tokens,
+                overlap_tokens=settings.chunk_overlap_tokens,
+            )
+
+        # Embedding audit on document only.
+        provider = "qwen" if settings.qwen_embedding_enabled else "hashing"
+        doc.embedding_provider = provider
+        doc.embedding_model = settings.qwen_embedding_model
+        doc.embedding_dimension = settings.embedding_dim
+        doc.index_status = "ready"
+        doc.error_message = None
+        doc.is_latest = True
+        _mark_other_group_versions_not_latest(
+            db,
+            tenant_id=job.tenant_id,
+            document_group_id=doc.document_group_id,
+            keep_document_id=doc.id,
+        )
 
         job.status = "succeeded"
         job.finished_at = _now()
         job.error = None
         db.commit()
         logger.info(
-            "index_job succeeded id=%s document_id=%s version=%s chunks=%s",
+            "index_job succeeded id=%s document_id=%s version=%s sections=%s leaves=%s",
             job.id,
             job.document_id,
             job.version,
-            len(pieces),
+            len(drafts),
+            leaf_count,
         )
     except Exception as exc:  # noqa: BLE001 — persist failure on job
         logger.exception("index_job failed id=%s", job_id)
@@ -157,6 +409,10 @@ def process_index_job(
             job.status = "failed"
             job.finished_at = _now()
             job.error = str(exc)[:2000]
+            doc = db.get(Document, job.document_id)
+            if doc is not None and doc.tenant_id == job.tenant_id:
+                doc.index_status = "failed"
+                doc.error_message = str(exc)[:2000]
             db.commit()
         raise
 
@@ -170,6 +426,7 @@ def process_pending_jobs(
     limit: int = 20,
     embedder: Embedder | None = None,
     storage: StorageService | None = None,
+    parser: DocumentParser | None = None,
 ) -> list[IndexJob]:
     jobs = list(
         db.scalars(
@@ -183,7 +440,13 @@ def process_pending_jobs(
     for job in jobs:
         try:
             done.append(
-                process_index_job(db, job.id, embedder=embedder, storage=storage)
+                process_index_job(
+                    db,
+                    job.id,
+                    embedder=embedder,
+                    storage=storage,
+                    parser=parser,
+                )
             )
         except Exception:  # noqa: BLE001 — continue queue
             refreshed = db.get(IndexJob, job.id)

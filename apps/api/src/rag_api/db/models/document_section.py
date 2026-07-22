@@ -1,0 +1,41 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Optional
+from uuid import UUID
+
+from sqlalchemy import Boolean, ForeignKey, Integer, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from rag_api.db.models.base import RAG_SCHEMA, Base, TimestampMixin, UUIDPrimaryKeyMixin
+
+if TYPE_CHECKING:
+    from rag_api.db.models.document import Document
+    from rag_api.db.models.document_chunk import DocumentChunk
+
+
+class DocumentSection(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """H1/H2 section with full text + path (F04 / F07)."""
+
+    __tablename__ = "document_sections"
+
+    tenant_id: Mapped[UUID] = mapped_column(
+        ForeignKey(f"{RAG_SCHEMA}.tenants.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    document_id: Mapped[UUID] = mapped_column(
+        ForeignKey(f"{RAG_SCHEMA}.documents.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    parent_id: Mapped[Optional[UUID]] = mapped_column(
+        ForeignKey(f"{RAG_SCHEMA}.document_sections.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    level: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    path: Mapped[str] = mapped_column(Text, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    section_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    is_latest: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    document: Mapped[Document] = relationship(back_populates="sections")
+    chunks: Mapped[list[DocumentChunk]] = relationship(back_populates="section")

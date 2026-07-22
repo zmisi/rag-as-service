@@ -94,6 +94,8 @@ class ToolExecutor:
             {
                 "chunk_id": h.chunk_id,
                 "document_id": h.document_id,
+                "section_id": h.section_id,
+                "path": h.path,
                 "content": h.content,
                 "score": h.score,
             }

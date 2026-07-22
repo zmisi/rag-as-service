@@ -1,12 +1,19 @@
-"""Document domain constants (F03)."""
+"""Document domain constants (F03 / F07)."""
 
 from __future__ import annotations
+
+import hashlib
 
 DOC_TAGS = frozenset(
     {"news", "sop", "best_practice", "knowledge_base", "faq"},
 )
 
-DOC_STATUSES = frozenset({"draft", "review", "published"})
+PUBLISH_STATUSES = frozenset({"draft", "review", "published"})
+DOC_STATUSES = PUBLISH_STATUSES  # API / legacy alias
+
+INDEX_STATUSES = frozenset({"pending", "processing", "ready", "failed"})
+
+CHUNK_TYPES = frozenset({"text", "table", "mixed"})
 
 # Phase 1: OOXML only for Word/PPT; .md as plain text. Legacy .doc / .ppt are rejected.
 ALLOWED_EXTENSIONS = frozenset({".txt", ".md", ".pdf", ".docx", ".pptx"})
@@ -56,8 +63,35 @@ def file_type_reject_message(filename: str) -> str:
     return UNSUPPORTED_FILE_TYPE_MESSAGE
 
 
-def bump_version(current: str) -> str:
-    if current == "0.0":
-        return "1.0"
-    major, _, minor = current.partition(".")
-    return f"{major}.{int(minor or 0) + 1}"
+def next_version(current: int | None) -> int:
+    """Next integer version; unset / 0 → 1."""
+    if current is None or current <= 0:
+        return 1
+    return int(current) + 1
+
+
+def bump_version(current: str | int | None) -> str:
+    """Legacy wrapper: returns str of next_version for older callers/tests."""
+    if isinstance(current, str):
+        if current in ("", "0.0", "0"):
+            n = 0
+        else:
+            major, _, _ = current.partition(".")
+            try:
+                n = int(major or 0)
+            except ValueError:
+                n = 0
+        return str(next_version(n))
+    return str(next_version(current))
+
+
+def format_version_display(n: int) -> str:
+    return f"v{int(n)}"
+
+
+def content_sha256(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def content_sha256_hex(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()

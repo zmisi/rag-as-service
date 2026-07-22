@@ -7,7 +7,8 @@ import io
 import pytest
 from sqlalchemy import delete, select
 
-from rag_api.db.models import Document, DocumentFile, IndexJob
+from rag_api.config import get_settings
+from rag_api.db.models import Document, DocumentChunk, DocumentFile, DocumentSection, IndexJob
 from tests.helpers import tenant_host_headers
 
 HEADERS_A = tenant_host_headers("tenant-a")
@@ -17,7 +18,19 @@ PDF_BYTES = b"%PDF-1.4 minimal test content"
 
 
 @pytest.fixture(autouse=True)
+def disable_index_sync_on_publish(monkeypatch):
+    """Keep publish → pending job assertions stable (indexing covered by F04/F07)."""
+    get_settings.cache_clear()
+    settings = get_settings()
+    monkeypatch.setattr(settings, "index_sync_on_publish", False)
+    yield
+    get_settings.cache_clear()
+
+
+@pytest.fixture(autouse=True)
 def wipe_documents(db):
+    db.execute(delete(DocumentChunk))
+    db.execute(delete(DocumentSection))
     db.execute(delete(IndexJob))
     db.execute(delete(DocumentFile))
     db.execute(delete(Document))
@@ -101,14 +114,16 @@ def test_f03_t05_publish_creates_index_job(client_a, db):
     r = client_a.post(f"/v1/documents/{doc_id}/publish", headers=HEADERS_A)
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["status"] == "published"
-    assert body["version"] == "1.0"
+    assert body["status"] == "published"  # API alias of publish_status
+    assert body["publish_status"] == "published"
+    assert body["version"] == 1
+    assert body["index_status"] in ("pending", "processing")
     job = db.scalar(
         select(IndexJob).where(IndexJob.document_id == doc_id)
     )
     assert job is not None
     assert job.status == "pending"
-    assert job.version == "1.0"
+    assert job.version == 1
 
 
 def test_f03_t06_unknown_tag_on_save(client_a):
@@ -174,18 +189,29 @@ def test_f03_t10_new_version_publish(client_a):
         headers=HEADERS_A,
     )
     client_a.post(f"/v1/documents/{doc_id}/submit-review", headers=HEADERS_A)
-    client_a.post(f"/v1/documents/{doc_id}/publish", headers=HEADERS_A)
+    published = client_a.post(f"/v1/documents/{doc_id}/publish", headers=HEADERS_A)
+    assert published.status_code == 200, published.text
+    assert published.json()["version"] == 1
 
-    client_a.post(f"/v1/documents/{doc_id}/new-version", headers=HEADERS_A)
+    nv = client_a.post(f"/v1/documents/{doc_id}/new-version", headers=HEADERS_A)
+    assert nv.status_code == 200, nv.text
+    draft = nv.json()
+    assert draft["version"] == 2
+    assert draft["status"] == "draft"
+    assert draft["id"] != doc_id
+    assert draft["document_group_id"] == published.json()["document_group_id"]
+    draft_id = draft["id"]
+
     client_a.patch(
-        f"/v1/documents/{doc_id}",
+        f"/v1/documents/{draft_id}",
         json={"title": "V2"},
         headers=HEADERS_A,
     )
-    client_a.post(f"/v1/documents/{doc_id}/submit-review", headers=HEADERS_A)
-    r = client_a.post(f"/v1/documents/{doc_id}/publish", headers=HEADERS_A)
+    client_a.post(f"/v1/documents/{draft_id}/submit-review", headers=HEADERS_A)
+    r = client_a.post(f"/v1/documents/{draft_id}/publish", headers=HEADERS_A)
     assert r.status_code == 200, r.text
-    assert r.json()["version"] == "1.1"
+    assert r.json()["version"] == 2
+    assert r.json()["is_latest"] is True
 
 
 def test_f03_t11_list_filter_by_tag(client_a):

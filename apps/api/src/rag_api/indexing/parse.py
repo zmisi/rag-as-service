@@ -1,32 +1,59 @@
-"""Source-file text extraction (F04temp: robust txt; best-effort binary types)."""
+"""Document parsing to Markdown (F04).
+
+PDF routing: PyMuPDF fast path → quality gate → Docling fallback.
+Office (.docx/.pptx): Docling. Text (.txt/.md): decode.
+"""
 
 from __future__ import annotations
 
+import logging
+import tempfile
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
+
+from rag_api.config import get_settings
+
+logger = logging.getLogger(__name__)
+
+_TEXT_SUFFIXES = frozenset({".txt", ".md", ".csv", ""})
+_OFFICE_SUFFIXES = frozenset({".docx", ".pptx", ".doc", ".ppt"})
+_PDF_SUFFIX = ".pdf"
+_FILE_SEPARATOR = "\n\n---\n\n"
+
+# Letters / numbers / punctuation / symbols (Unicode categories) + CJK ranges.
+_PRINTABLE_CATEGORIES = frozenset({"L", "N", "P", "S"})
+
+
+def _is_quality_char(ch: str) -> bool:
+    import unicodedata
+
+    if unicodedata.category(ch)[0] in _PRINTABLE_CATEGORIES:
+        return True
+    o = ord(ch)
+    return (
+        0x3040 <= o <= 0x30FF  # kana
+        or 0x3400 <= o <= 0x4DBF
+        or 0x4E00 <= o <= 0x9FFF
+        or 0xAC00 <= o <= 0xD7AF
+        or 0x20 <= o <= 0x7E
+    )
 
 
 class ParseError(Exception):
     """Raised when a source file cannot be parsed into text."""
 
 
-def extract_text(filename: str, data: bytes) -> str:
-    """Return plain text from uploaded bytes. Raises ParseError on failure."""
-    suffix = Path(filename).suffix.lower()
-    if suffix in {".txt", ".md", ".csv", ""}:
-        return _decode_text(data)
-    if suffix in {".pdf", ".doc", ".docx", ".ppt", ".pptx"}:
-        # F04temp: try utf-8/latin decode for mistyped extensions; else fail clearly.
-        try:
-            text = _decode_text(data)
-            if text.strip():
-                return text
-        except ParseError:
-            pass
-        raise ParseError(
-            f"F04temp cannot fully parse {suffix}; upload .txt for e2e, "
-            "or install full parsers in Spec-approved F04"
-        )
-    raise ParseError(f"Unsupported file type: {suffix or '(none)'}")
+@dataclass(frozen=True)
+class ParseOutcome:
+    text: str
+    route: str  # text | pymupdf | docling
+
+
+class DocumentParser(Protocol):
+    def parse_to_markdown(self, filename: str, data: bytes) -> str:
+        """Return Markdown (or plain text). Empty string if no extractable text."""
+        ...
 
 
 def _decode_text(data: bytes) -> str:
@@ -38,3 +65,341 @@ def _decode_text(data: bytes) -> str:
         except UnicodeDecodeError:
             continue
     raise ParseError("Unable to decode text bytes")
+
+
+def _non_ws(s: str) -> str:
+    return "".join(ch for ch in s if not ch.isspace())
+
+
+@dataclass(frozen=True)
+class PdfFastMetrics:
+    page_count: int
+    total_chars: int
+    chars_per_page: float
+    printable_ratio: float
+    empty_page_ratio: float
+    page_texts: tuple[str, ...]
+
+
+def extract_pdf_pages_pymupdf(data: bytes) -> PdfFastMetrics:
+    """Extract per-page text via PyMuPDF. Raises ParseError on open/extract failure."""
+    try:
+        import fitz  # PyMuPDF
+    except ImportError as exc:
+        raise ParseError(
+            "pymupdf is not installed; pip install pymupdf"
+        ) from exc
+
+    try:
+        doc = fitz.open(stream=data, filetype="pdf")
+    except Exception as exc:  # noqa: BLE001
+        raise ParseError(f"PyMuPDF failed to open PDF: {exc}") from exc
+
+    try:
+        page_texts: list[str] = []
+        for page in doc:
+            try:
+                page_texts.append(page.get_text("text") or "")
+            except Exception as exc:  # noqa: BLE001
+                raise ParseError(f"PyMuPDF failed to extract page: {exc}") from exc
+    finally:
+        doc.close()
+
+    page_count = max(len(page_texts), 1)
+    per_page_nw = [_non_ws(t) for t in page_texts]
+    total_chars = sum(len(p) for p in per_page_nw)
+    empty_pages = sum(1 for p in per_page_nw if len(p) < 10)
+    joined = "".join(per_page_nw)
+    if total_chars == 0:
+        printable_ratio = 1.0
+    else:
+        printable = sum(1 for ch in joined if _is_quality_char(ch))
+        printable_ratio = printable / total_chars
+
+    return PdfFastMetrics(
+        page_count=page_count if page_texts else 0,
+        total_chars=total_chars,
+        chars_per_page=(total_chars / page_count) if page_texts else 0.0,
+        printable_ratio=printable_ratio,
+        empty_page_ratio=(empty_pages / page_count) if page_texts else 1.0,
+        page_texts=tuple(page_texts),
+    )
+
+
+def pdf_fast_quality_ok(
+    metrics: PdfFastMetrics,
+    *,
+    min_chars: int,
+    min_chars_per_page: float,
+    min_printable_ratio: float,
+    max_empty_page_ratio: float,
+) -> bool:
+    """Return True if PyMuPDF extraction passes the quality gate."""
+    if metrics.page_count <= 0:
+        return False
+    if metrics.total_chars < min_chars:
+        return False
+    if metrics.chars_per_page < min_chars_per_page:
+        return False
+    if metrics.printable_ratio < min_printable_ratio:
+        return False
+    if metrics.empty_page_ratio > max_empty_page_ratio:
+        return False
+    return True
+
+
+class TextDocumentParser:
+    """Decode .txt/.md; binary Office/PDF requires routed parser / Docling."""
+
+    def parse_to_markdown(self, filename: str, data: bytes) -> str:
+        suffix = Path(filename).suffix.lower()
+        if suffix in _TEXT_SUFFIXES:
+            return _decode_text(data)
+        if suffix == _PDF_SUFFIX or suffix in _OFFICE_SUFFIXES:
+            try:
+                text = data.decode("utf-8")
+            except UnicodeDecodeError as exc:
+                raise ParseError(
+                    f"Cannot parse {suffix} without Docling; install rag-api[docling]"
+                ) from exc
+            if "\x00" in text[:4096]:
+                raise ParseError(
+                    f"Cannot parse {suffix} without Docling; install rag-api[docling]"
+                )
+            return text
+        raise ParseError(f"Unsupported file type: {suffix or '(none)'}")
+
+
+class DoclingDocumentParser:
+    """Docling-backed parser: do_ocr=False, tables as Markdown."""
+
+    def __init__(self) -> None:
+        try:
+            from docling.datamodel.base_models import InputFormat
+            from docling.datamodel.pipeline_options import PdfPipelineOptions
+            from docling.document_converter import DocumentConverter, PdfFormatOption
+        except ImportError as exc:
+            raise RuntimeError(
+                "docling is not installed; pip install 'rag-api[docling]'"
+            ) from exc
+
+        pdf_opts = PdfPipelineOptions(do_ocr=False, do_table_structure=True)
+        self._converter = DocumentConverter(
+            format_options={
+                InputFormat.PDF: PdfFormatOption(pipeline_options=pdf_opts),
+            }
+        )
+        self._text = TextDocumentParser()
+
+    def parse_to_markdown(self, filename: str, data: bytes) -> str:
+        suffix = Path(filename).suffix.lower()
+        if suffix in _TEXT_SUFFIXES:
+            return self._text.parse_to_markdown(filename, data)
+
+        suffix_or = suffix if suffix else ".bin"
+        try:
+            with tempfile.NamedTemporaryFile(suffix=suffix_or, delete=True) as tmp:
+                tmp.write(data)
+                tmp.flush()
+                result = self._converter.convert(tmp.name)
+                md = result.document.export_to_markdown()
+                return (md or "").strip()
+        except ParseError:
+            raise
+        except Exception as exc:  # noqa: BLE001 — map to ParseError for job.failed
+            logger.exception("Docling convert failed for %s", filename)
+            raise ParseError(f"Docling failed to parse {filename}: {exc}") from exc
+
+
+class RoutedDocumentParser:
+    """F04 dual-route parser with parse_route logging."""
+
+    def __init__(
+        self,
+        *,
+        docling: DocumentParser | None = None,
+        settings: object | None = None,
+    ) -> None:
+        self._docling = docling
+        self._settings = settings
+        self._text = TextDocumentParser()
+        self.last_routes: list[tuple[str, str]] = []
+
+    def _cfg(self) -> object:
+        return self._settings or get_settings()
+
+    def _get_docling(self) -> DocumentParser:
+        if self._docling is not None:
+            return self._docling
+        try:
+            self._docling = DoclingDocumentParser()
+        except RuntimeError as exc:
+            raise ParseError(str(exc)) from exc
+        return self._docling
+
+    def parse_outcome(self, filename: str, data: bytes) -> ParseOutcome:
+        suffix = Path(filename).suffix.lower()
+        if suffix in _TEXT_SUFFIXES:
+            outcome = ParseOutcome(text=_decode_text(data), route="text")
+            self._log_route(filename, outcome.route, reason="text_suffix")
+            return outcome
+
+        if suffix == _PDF_SUFFIX:
+            return self._parse_pdf(filename, data)
+
+        if suffix in {".docx", ".pptx"}:
+            text = self._get_docling().parse_to_markdown(filename, data)
+            outcome = ParseOutcome(text=text, route="docling")
+            self._log_route(filename, outcome.route, reason="office")
+            return outcome
+
+        if suffix in {".doc", ".ppt"}:
+            raise ParseError(f"Legacy Office format not supported: {suffix}")
+
+        raise ParseError(f"Unsupported file type: {suffix or '(none)'}")
+
+    def parse_to_markdown(self, filename: str, data: bytes) -> str:
+        return self.parse_outcome(filename, data).text
+
+    def _parse_pdf(self, filename: str, data: bytes) -> ParseOutcome:
+        cfg = self._cfg()
+        try:
+            metrics = extract_pdf_pages_pymupdf(data)
+        except ParseError as exc:
+            logger.info(
+                "pdf_fast_path error filename=%s err=%s; falling back to docling",
+                filename,
+                exc,
+            )
+            text = self._get_docling().parse_to_markdown(filename, data)
+            outcome = ParseOutcome(text=text, route="docling")
+            self._log_route(filename, outcome.route, reason="pymupdf_error")
+            return outcome
+
+        if metrics.total_chars == 0:
+            # Textless PDF: empty success path; do not OCR via Docling.
+            outcome = ParseOutcome(text="", route="pymupdf")
+            self._log_route(
+                filename,
+                outcome.route,
+                reason="empty_text_layer",
+                metrics=metrics,
+            )
+            return outcome
+
+        ok = pdf_fast_quality_ok(
+            metrics,
+            min_chars=int(getattr(cfg, "pdf_fast_min_chars")),
+            min_chars_per_page=float(getattr(cfg, "pdf_fast_min_chars_per_page")),
+            min_printable_ratio=float(getattr(cfg, "pdf_fast_min_printable_ratio")),
+            max_empty_page_ratio=float(getattr(cfg, "pdf_fast_max_empty_page_ratio")),
+        )
+        if ok:
+            text = "\n\n".join(t.strip() for t in metrics.page_texts if t.strip())
+            outcome = ParseOutcome(text=text, route="pymupdf")
+            self._log_route(filename, outcome.route, reason="quality_ok", metrics=metrics)
+            return outcome
+
+        logger.info(
+            "pdf_fast_path quality_fail filename=%s total_chars=%s cpp=%.1f "
+            "printable=%.3f empty_page_ratio=%.3f; falling back to docling",
+            filename,
+            metrics.total_chars,
+            metrics.chars_per_page,
+            metrics.printable_ratio,
+            metrics.empty_page_ratio,
+        )
+        text = self._get_docling().parse_to_markdown(filename, data)
+        outcome = ParseOutcome(text=text, route="docling")
+        self._log_route(
+            filename,
+            outcome.route,
+            reason="quality_fail",
+            metrics=metrics,
+        )
+        return outcome
+
+    def _log_route(
+        self,
+        filename: str,
+        route: str,
+        *,
+        reason: str,
+        metrics: PdfFastMetrics | None = None,
+    ) -> None:
+        self.last_routes.append((filename, route))
+        extra = ""
+        if metrics is not None:
+            extra = (
+                f" pages={metrics.page_count} total_chars={metrics.total_chars} "
+                f"cpp={metrics.chars_per_page:.1f} printable={metrics.printable_ratio:.3f} "
+                f"empty_page_ratio={metrics.empty_page_ratio:.3f}"
+            )
+        logger.info(
+            "parse_route=%s filename=%s reason=%s%s",
+            route,
+            filename,
+            reason,
+            extra,
+        )
+
+
+class ScriptedDocumentParser:
+    """Test double: map filename → markdown (or raise)."""
+
+    def __init__(
+        self,
+        mapping: dict[str, str] | None = None,
+        *,
+        default: str | None = None,
+        fail_suffixes: frozenset[str] | None = None,
+        empty_suffixes: frozenset[str] | None = None,
+        route: str = "text",
+    ) -> None:
+        self._mapping = mapping or {}
+        self._default = default
+        self._fail_suffixes = fail_suffixes or frozenset()
+        self._empty_suffixes = empty_suffixes or frozenset()
+        self._route = route
+        self.last_routes: list[tuple[str, str]] = []
+
+    def parse_outcome(self, filename: str, data: bytes) -> ParseOutcome:
+        text = self.parse_to_markdown(filename, data)
+        outcome = ParseOutcome(text=text, route=self._route)
+        self.last_routes.append((filename, outcome.route))
+        return outcome
+
+    def parse_to_markdown(self, filename: str, data: bytes) -> str:
+        suffix = Path(filename).suffix.lower()
+        if suffix in self._fail_suffixes:
+            raise ParseError(f"scripted failure for {filename}")
+        if suffix in self._empty_suffixes:
+            return ""
+        if filename in self._mapping:
+            return self._mapping[filename]
+        if self._default is not None:
+            return self._default
+        return TextDocumentParser().parse_to_markdown(filename, data)
+
+
+def get_document_parser() -> DocumentParser:
+    return RoutedDocumentParser()
+
+
+def parse_files_to_markdown(
+    files: list[tuple[str, bytes]],
+    *,
+    parser: DocumentParser | None = None,
+) -> str:
+    """Parse multiple (filename, bytes) in order; join with separator."""
+    parser = parser or get_document_parser()
+    parts: list[str] = []
+    for filename, data in files:
+        if hasattr(parser, "parse_outcome"):
+            outcome = parser.parse_outcome(filename, data)  # type: ignore[attr-defined]
+            md = outcome.text
+        else:
+            md = parser.parse_to_markdown(filename, data)
+        if md.strip():
+            parts.append(md.strip())
+    return _FILE_SEPARATOR.join(parts)
