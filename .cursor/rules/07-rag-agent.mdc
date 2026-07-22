@@ -15,7 +15,7 @@ alwaysApply: true
 4. 每个 section/chunk 必带 `tenant_id`；写库与 **`search(tenant_id, query, top_k)`** 强制租户过滤。
 5. **检索**：对 `is_latest` leaf 向量 top-k；门禁 `publish_status=published` AND `index_status=ready` AND 未删；命中后返回 **所属节全文 + path**；同一 `section_id` 去重；F06 经 `search_knowledge` 调用本接口，不在 Agent 内另写一套向量查询。
 6. 新版本索引成功后旧版本 documents/section/chunk **固定** `is_latest=false`；软删除文档同理。
-7. 解析：PDF 优先 PyMuPDF fast path，质量不足再 Docling；Office 固定 Docling；`do_ocr=false`；表以 Markdown 保留（见 F04）。
+7. 解析：PDF **骨架优先**（有 TOC/字号标题或 `PDF_FORCE_STRUCTURE` → Docling 结构路径打标签；无骨架纯文字 → PyMuPDF）；无骨架质量差可 fallback Docling；Office 固定 Docling；`do_ocr=false`；表以 Markdown 保留（见 F04）。
 
 ## Agent（F06）
 

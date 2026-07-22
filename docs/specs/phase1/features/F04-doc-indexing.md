@@ -7,8 +7,8 @@
 |------|-----|
 | **Status** | `done` |
 | **Owner** | |
-| **Approved by** | |
-| **Approved at** | |
+| **Approved by** | team |
+| **Approved at** | 2026-07-22 |
 
 > **数据模型依赖**：列名与版本行语义以 [02-data-model.md](../02-data-model.md) 与 [F07-doc-indexing-data-model.md](F07-doc-indexing-data-model.md) 为准（`is_latest` 替代原 `is_active`；`index_status`；`section_index`/`chunk_index`；富 chunk 字段）。本 Feature 索引/检索行为仍有效；持久化重构由 F07 验收。
 
@@ -16,9 +16,9 @@
 
 - 消费「文档已 publish」事件（或等价轮询 `index_job`）
 - 解析 `.txt` / `.pdf` / `.docx` / `.pptx`（与 F03 一致；不解析旧版 `.doc` / `.ppt`）
-- **PDF 双路由解析**：优先 **PyMuPDF** 快速提取文本；质量不足或失败时降级 **Docling**（`do_ocr=false`；表格以 Markdown 表保留）
+- **PDF 骨架感知双路由**：有骨架 → **Docling 结构路径**（打标签：H1/H2/H3…、段落、表格、图片占位；`do_ocr=false`）；无骨架纯文字 → **PyMuPDF**；无骨架但文字质量差/打开失败时可 fallback Docling
 - **Office 解析**：`.docx` / `.pptx` 固定 **Docling**（Phase 1 不走 PyMuPDF）
-- **层级感知切块**：从解析结果构建 **H1 / H2** 节树；更深标题并入最近的 H2 叶节；节内再按可配置 token 切出 leaf chunk
+- **层级感知切块**：从解析结果（结构 Markdown）构建 **H1 / H2** 节树；更深标题并入最近的 H2 叶节；节内再按可配置 token 切出 leaf chunk
 - **仅 leaf** 写入 embedding / pgvector；节全文与 `path` 存于 `document_sections`
 - 推进版本行 **`index_status`**：`pending` → `processing` → `ready` / `failed`
 - **内部检索** `search(tenant_id, query, top_k)`：`is_latest` leaf 向量 top-k → 组装节全文 + `path`（供 F06 `search_knowledge` 调用）
@@ -60,14 +60,16 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-  subgraph pdf [PDF 双路由·Phase 1]
-    P0[.pdf 源文件] --> P1[PyMuPDF 快速探测与提取]
-    P1 --> P2{质量达标?}
-    P2 -->|是| P3[parse_route=pymupdf]
-    P2 -->|否 无字/乱码/失败| P4[Docling do_ocr=false]
-    P4 --> P5[parse_route=docling]
-    P3 --> P6[Markdown/纯文本]
-    P5 --> P6
+  subgraph pdf [PDF 骨架感知·Phase 1]
+    P0[.pdf] --> P1[PyMuPDF 抽字 + 骨架探测]
+    P1 --> E{有文字层?}
+    E -->|否| P0e[空成功 parse_route=pymupdf]
+    E -->|是| S{有骨架或 FORCE?}
+    S -->|是| P4[Docling 结构路径 do_ocr=false]
+    P4 --> P5[ParseBlock→Markdown parse_route=docling]
+    S -->|否| Q{文字质量 OK?}
+    Q -->|是| P3[parse_route=pymupdf 纯文本]
+    Q -->|否/打开失败| P4
   end
   subgraph office [Office·Phase 1]
     O0[.docx / .pptx] --> O1[Docling]
@@ -77,7 +79,9 @@ flowchart TD
     T0[.txt / .md] --> T1[文本解码]
     T1 --> T2[parse_route=text]
   end
-  P6 --> U[合并 → Section 树]
+  P5 --> U[合并 → Section 树]
+  P3 --> U
+  P0e --> U
   O2 --> U
   T2 --> U
 ```
@@ -108,16 +112,16 @@ flowchart LR
 7. **无字 / 空文档**：空 txt、或无文字层且未做 OCR 的 PDF → 解析结果为空 → job **`succeeded`**，`index_status=ready`，**0** section/chunk；search 无命中。（与「损坏失败」区分。）
 8. **解析与表结构**：
    - **`.txt` / `.md`**：按字节解码为文本（UTF-8 优先，可回退 gb18030 / latin-1）；`parse_route=text`。
-   - **`.pdf`（双路由）**：
-     1. **Fast path — PyMuPDF**：逐页快速探测并提取文本（目标 **&lt; 0.1s/页** 量级，无 GPU）；记录 `parse_route=pymupdf`。
-     2. **质量判定**（启发式，实现可调阈值经 Settings）：总提取字符数不足、每页平均字符过低、可打印/CJK 字符占比过低、或 PyMuPDF 抛错 → 视为 fast path **未达标**。
-     3. **Fallback — Docling**：fast path 未达标时调用 Docling；`do_ocr=false`；表结构提取开启；导出 Markdown 表；`parse_route=docling`。
-     4. Docling 未安装且 fast path 未达标 → 按规则 6 **failed**（可测路径：集成环境需装 Docling 或 mock）。
+   - **`.pdf`（骨架感知双路由）**：
+     1. **PyMuPDF 抽字 + 骨架探测**：outline/bookmarks（`PDF_SKELETON_MIN_TOC`，默认 1）和/或字号标题候选（`PDF_SKELETON_MIN_HEADING_CANDIDATES`，默认 3）；`PDF_FORCE_STRUCTURE=true` 强制结构路径。
+     2. **无文字层**：空成功，`parse_route=pymupdf`，**不** OCR。
+     3. **有骨架（或 force）→ 结构路径 Docling**：`do_ocr=false`；识别并打标签 **H1/H2/H3…、段落、表格、图片**（图为占位/题注，不 OCR）；经 `ParseBlock` → Markdown；`parse_route=docling`。Docling 未安装 → 按规则 6 **failed**（禁止悄悄退回 flat PyMuPDF 冒充结构成功）。
+     4. **无骨架 + 有字 → PyMuPDF 纯文本**：`parse_route=pymupdf`。质量门限（`PDF_FAST_*`）仅作无骨架路径辅助：乱码/质量差或打开失败时可 fallback Docling。
+     5. **不得**仅因「字符够多」把有骨架 PDF 压成扁平原文。
    - **`.docx` / `.pptx`**：固定 Docling（`do_ocr=false`）；`parse_route=docling`。
-   - **多文件文档**：按 `document_files` 顺序解析后合并进同一版本的节树（文件间可插入分隔，避免表粘连）；每文件独立选路由并写结构化日志。
+   - **多文件文档**：按 `document_files` 顺序解析后合并进同一版本的节树（文件间可插入分隔，避免表粘连）；每文件独立选路由并写结构化日志（含 `skeleton` 信号）。
 9. **节树（层级）**：
-   - Phase 1 仅识别 **H1 / H2**（或 Docling/Markdown 等价一级、二级标题）。
-   - 更深标题（H3+）**并入**最近的 H2 叶节（无 H2 则并入所属 H1）。
+   - Phase 1 索引叶节仅 **H1 / H2**（或 Markdown 等价）；解析层可保留 H3+ 标签，建树时更深标题**并入**最近的 H2 叶节（无 H2 则并入所属 H1）。
    - 无任何标题：整篇（或整文件合并结果）作为 **单节**，`path` 可用文档 title 或文件名。
    - 若 H1 下存在 H2：叶节以 **H2** 为准；H1 仅含导言、且导言非空时可另成叶节（`path` = 该 H1 标题），否则不单独建空 H1 叶节。
    - 每节存储 **`path`**（如 `退款政策 > 时效`）与 **节全文** `content`（含该节下段落与 Markdown 表）；`level` 为 text `'1'`|`'2'`；序号列 **`section_index`**。
@@ -134,12 +138,14 @@ flowchart LR
     - **同一节**因多个 leaf 命中时去重，只保留最高分一条（结果中同一 `section_id` 至多一次）；
     - `tenant_id` 仅来自调用方上下文，禁止由不可信输入覆盖。
 13. 旧版本失效策略固定为 **`is_latest=false`**；检索只使用 `is_latest=true` 的 leaf，并只返回对应 `is_latest` 节。
-14. **可观测性**：索引 job 成功/失败日志须含 `document_id`、`version`（int）、每源文件的 `parse_route`（`text` | `pymupdf` | `docling`）；Settings 阈值：`PDF_FAST_MIN_CHARS`（默认 80）、`PDF_FAST_MIN_CHARS_PER_PAGE`（40）、`PDF_FAST_MIN_PRINTABLE_RATIO`（0.85）、`PDF_FAST_MAX_EMPTY_PAGE_RATIO`（0.50）。
+14. **可观测性**：索引 job 成功/失败日志须含 `document_id`、`version`（int）、每源文件的 `parse_route`（`text` | `pymupdf` | `docling`）与 PDF **`skeleton=true|false`**（及 reason）；Settings：`PDF_SKELETON_MIN_TOC`、`PDF_SKELETON_MIN_HEADING_CANDIDATES`、`PDF_FORCE_STRUCTURE`；无骨架辅助门限 `PDF_FAST_*`。
 
 ## 流水线中间对象（实现约定，非对外 API）
 
 | 对象 | 用途 |
 |------|------|
+| 骨架探测 | TOC / 字号候选 → `has_skeleton`；只读，不写库 |
+| `ParseBlock` | 结构路径中间块：`heading(level)` / `paragraph` / `table` / `image` → Markdown |
 | 解析出口 | 映射为自家节树（非 Docling 原生对象直接下游） |
 | `parse_route` | 单文件解析路径：`text` / `pymupdf` / `docling`；写结构化日志 |
 | 叶节 | 含 `path`、节全文、`section_index`、text `level`；写入 `document_sections` |
@@ -178,6 +184,8 @@ flowchart LR
 | F04-T10 | Given 含 H1 与两个 H2 且各含独特短语的文档 When 索引 | Then leaf 不跨 H2；两节 `path` 可区分；各短语只出现在对应节 `content`；`section_index` 唯一 | api |
 | F04-T11 | Given 同上 When search 仅出现在 H2-B 的短语 | Then 命中返回 H2-B 节全文与对应 `path`；`content` 不含 H2-A 专属正文 | api |
 | F04-T12 | Given 同节内多 leaf 均可被同一 query 命中 When search | Then 同一 `section_id` 在结果中至多出现一次 | api |
-| F04-T13 | Given 含可提取文字层的 PDF（独特短语）When 索引 | Then job=succeeded；走 PyMuPDF fast path（`parse_route=pymupdf` 或等价可测信号）；search 可命中该短语 | unit |
-| F04-T14 | Given PDF 且 PyMuPDF 提取质量不达标（mock/桩）When 索引 | Then 降级 Docling；job=succeeded；`parse_route=docling`；节/chunk 非空（样本为可解析 Office/PDF 替身） | unit |
+| F04-T13 | Given 无骨架、含可提取文字层的 PDF（独特短语）When 解析/索引 | Then `parse_route=pymupdf`；`skeleton=false`；search 可命中该短语 | unit |
+| F04-T14 | Given 无骨架且文字质量不达标（或打开失败）When 解析 | Then fallback Docling；`parse_route=docling` | unit |
 | F04-T15 | Given `.docx` publish When 索引 | Then 不经 PyMuPDF；`parse_route=docling`（或 Docling mock）；job=succeeded | unit |
+| F04-T16 | Given 有 TOC/骨架的 PDF When 解析 | Then `skeleton=true`；`parse_route=docling`；导出含多级 heading（及表/图标签若存在） | unit |
+| F04-T17 | Given 判定有骨架但 Docling 不可用 When 索引 | Then job/index failed；不写入「假结构成功」的单节 flat 结果冒充结构路径 | unit |

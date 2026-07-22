@@ -88,6 +88,13 @@ class Settings(BaseSettings):
         default=0.50,
         alias="PDF_FAST_MAX_EMPTY_PAGE_RATIO",
     )
+    # F04 PDF skeleton detection → structure path (Docling).
+    pdf_skeleton_min_toc: int = Field(default=1, alias="PDF_SKELETON_MIN_TOC")
+    pdf_skeleton_min_heading_candidates: int = Field(
+        default=3,
+        alias="PDF_SKELETON_MIN_HEADING_CANDIDATES",
+    )
+    pdf_force_structure: bool = Field(default=False, alias="PDF_FORCE_STRUCTURE")
 
 
 @lru_cache

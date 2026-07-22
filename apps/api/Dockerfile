@@ -2,8 +2,18 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# libpq5: psycopg. libxcb1/libgl1/libglib*: Docling/OpenCV headless runtime
+# (otherwise: "libxcb.so.1: cannot open shared object file").
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libpq5 \
+    && apt-get install -y --no-install-recommends \
+      libpq5 \
+      libxcb1 \
+      libx11-6 \
+      libxext6 \
+      libxrender1 \
+      libglib2.0-0 \
+      libgl1 \
+      libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml README.md ./

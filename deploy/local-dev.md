@@ -39,6 +39,15 @@ echo "nameserver 127.0.0.1" | sudo tee /etc/resolver/lxzxai.com
 # 仓库根目录
 cp deploy/.env.example .env
 docker compose -f deploy/docker-compose.yml up --build
+
+# 如果需要重建API镜像，可以运行下面命令
+docker compose -f deploy/docker-compose.yml build \
+  --build-arg INSTALL_DOCLING=1 \
+  --build-arg PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
+  --build-arg PIP_TRUSTED_HOST=pypi.tuna.tsinghua.edu.cn \
+  api
+
+docker compose -f deploy/docker-compose.yml up -d --force-recreate api web
 ```
 
 服务：
@@ -127,6 +136,7 @@ docker compose -f deploy/docker-compose.yml build \
 1. 确认用了国内 PyPI 镜像（默认清华）；不要用 `--extra-index-url` 混源装 Docling
 2. 清掉坏缓存后重试：`docker builder prune -f` 再 `build --no-cache api`
 3. 仅文字层 PDF 可先 `INSTALL_DOCLING=0`（PyMuPDF 足够），少下一大包
+4. 若索引报 `libxcb.so.1: cannot open shared object file`：确认用的是含系统库的新 Dockerfile 后 **重建 api 镜像**（`INSTALL_DOCLING=1 ... build api`）
 
 说明：
 
@@ -148,6 +158,7 @@ E2E：`E2E_ENABLED=1` + `DATABASE_URL` 后 `cd apps/web && npm run test:e2e`。
 | `.docx` / `.pptx` | 需 [Docling](https://github.com/docling-project/docling)：`cd apps/api && uv sync --extra docling` |
 | 切块 | H1/H2 节树 + 节内 leaf（`CHUNK_TARGET_TOKENS` / `CHUNK_OVERLAP_TOKENS`） |
 | Embedding | 默认 `HashingEmbedder`（本地无 DashScope）；生产可设 `QWEN_EMBEDDING_ENABLED=true`；审计字段写在 **documents** |
+| PDF 路由 | **有骨架**（书签 TOC / 字号标题候选，或 `PDF_FORCE_STRUCTURE=true`）→ Docling 结构路径；**无骨架纯文字** → PyMuPDF；结构 PDF 需 `INSTALL_DOCLING=1` |
 | 源文件持久化 | Compose 卷 `api_storage` → `/app/var/storage` |
 | 同租户去重 | 相同 `content_sha256` 且已有 `ready` latest → 跳过冗余索引 |
 

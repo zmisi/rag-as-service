@@ -1,6 +1,7 @@
 """Document parsing to Markdown (F04).
 
-PDF routing: PyMuPDF fast path → quality gate → Docling fallback.
+PDF routing: skeleton → Docling structure path; plain text → PyMuPDF;
+quality gate is an auxiliary fallback on the no-skeleton path.
 Office (.docx/.pptx): Docling. Text (.txt/.md): decode.
 """
 
@@ -13,6 +14,13 @@ from pathlib import Path
 from typing import Protocol
 
 from rag_api.config import get_settings
+from rag_api.indexing.parse_blocks import (
+    ParseBlock,
+    blocks_to_markdown,
+    count_block_kinds,
+    markdown_to_blocks,
+)
+from rag_api.indexing.pdf_skeleton import SkeletonProbe, detect_pdf_skeleton
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +56,9 @@ class ParseError(Exception):
 class ParseOutcome:
     text: str
     route: str  # text | pymupdf | docling
+    skeleton: bool | None = None
+    skeleton_reason: str | None = None
+    block_counts: dict[str, int] | None = None
 
 
 class DocumentParser(Protocol):
@@ -192,9 +203,14 @@ class DoclingDocumentParser:
         self._text = TextDocumentParser()
 
     def parse_to_markdown(self, filename: str, data: bytes) -> str:
+        blocks = self.parse_to_blocks(filename, data)
+        return blocks_to_markdown(blocks)
+
+    def parse_to_blocks(self, filename: str, data: bytes) -> list[ParseBlock]:
         suffix = Path(filename).suffix.lower()
         if suffix in _TEXT_SUFFIXES:
-            return self._text.parse_to_markdown(filename, data)
+            md = self._text.parse_to_markdown(filename, data)
+            return markdown_to_blocks(md)
 
         suffix_or = suffix if suffix else ".bin"
         try:
@@ -203,7 +219,7 @@ class DoclingDocumentParser:
                 tmp.flush()
                 result = self._converter.convert(tmp.name)
                 md = result.document.export_to_markdown()
-                return (md or "").strip()
+                return markdown_to_blocks((md or "").strip())
         except ParseError:
             raise
         except Exception as exc:  # noqa: BLE001 — map to ParseError for job.failed
@@ -212,7 +228,7 @@ class DoclingDocumentParser:
 
 
 class RoutedDocumentParser:
-    """F04 dual-route parser with parse_route logging."""
+    """F04 skeleton-aware dual-route parser with parse_route logging."""
 
     def __init__(
         self,
@@ -224,6 +240,7 @@ class RoutedDocumentParser:
         self._settings = settings
         self._text = TextDocumentParser()
         self.last_routes: list[tuple[str, str]] = []
+        self.last_skeleton: list[tuple[str, SkeletonProbe]] = []
 
     def _cfg(self) -> object:
         return self._settings or get_settings()
@@ -248,9 +265,19 @@ class RoutedDocumentParser:
             return self._parse_pdf(filename, data)
 
         if suffix in {".docx", ".pptx"}:
-            text = self._get_docling().parse_to_markdown(filename, data)
-            outcome = ParseOutcome(text=text, route="docling")
-            self._log_route(filename, outcome.route, reason="office")
+            text, counts = self._structure_via_docling(filename, data)
+            outcome = ParseOutcome(
+                text=text,
+                route="docling",
+                skeleton=None,
+                block_counts=counts,
+            )
+            self._log_route(
+                filename,
+                outcome.route,
+                reason="office",
+                block_counts=counts,
+            )
             return outcome
 
         if suffix in {".doc", ".ppt"}:
@@ -261,29 +288,96 @@ class RoutedDocumentParser:
     def parse_to_markdown(self, filename: str, data: bytes) -> str:
         return self.parse_outcome(filename, data).text
 
+    def _structure_via_docling(
+        self, filename: str, data: bytes
+    ) -> tuple[str, dict[str, int]]:
+        parser = self._get_docling()
+        if hasattr(parser, "parse_to_blocks"):
+            blocks = parser.parse_to_blocks(filename, data)  # type: ignore[attr-defined]
+            counts = count_block_kinds(blocks)
+            return blocks_to_markdown(blocks), counts
+        md = parser.parse_to_markdown(filename, data)
+        blocks = markdown_to_blocks(md)
+        return blocks_to_markdown(blocks), count_block_kinds(blocks)
+
     def _parse_pdf(self, filename: str, data: bytes) -> ParseOutcome:
         cfg = self._cfg()
+        force = bool(getattr(cfg, "pdf_force_structure", False))
+
         try:
             metrics = extract_pdf_pages_pymupdf(data)
         except ParseError as exc:
             logger.info(
-                "pdf_fast_path error filename=%s err=%s; falling back to docling",
+                "pdf_extract error filename=%s err=%s; trying docling",
                 filename,
                 exc,
             )
-            text = self._get_docling().parse_to_markdown(filename, data)
-            outcome = ParseOutcome(text=text, route="docling")
-            self._log_route(filename, outcome.route, reason="pymupdf_error")
+            text, counts = self._structure_via_docling(filename, data)
+            outcome = ParseOutcome(
+                text=text,
+                route="docling",
+                skeleton=True,
+                skeleton_reason="pymupdf_error",
+                block_counts=counts,
+            )
+            self._log_route(
+                filename,
+                outcome.route,
+                reason="pymupdf_error",
+                skeleton=True,
+                skeleton_reason="pymupdf_error",
+                block_counts=counts,
+            )
             return outcome
 
-        if metrics.total_chars == 0:
-            # Textless PDF: empty success path; do not OCR via Docling.
-            outcome = ParseOutcome(text="", route="pymupdf")
+        if metrics.total_chars == 0 and not force:
+            outcome = ParseOutcome(
+                text="",
+                route="pymupdf",
+                skeleton=False,
+                skeleton_reason="empty",
+            )
             self._log_route(
                 filename,
                 outcome.route,
                 reason="empty_text_layer",
                 metrics=metrics,
+                skeleton=False,
+                skeleton_reason="empty",
+            )
+            return outcome
+
+        try:
+            probe = detect_pdf_skeleton(
+                data,
+                min_toc=int(getattr(cfg, "pdf_skeleton_min_toc", 1)),
+                min_heading_candidates=int(
+                    getattr(cfg, "pdf_skeleton_min_heading_candidates", 3)
+                ),
+                force=force,
+            )
+        except RuntimeError as exc:
+            raise ParseError(str(exc)) from exc
+
+        self.last_skeleton.append((filename, probe))
+
+        if probe.has_skeleton:
+            text, counts = self._structure_via_docling(filename, data)
+            outcome = ParseOutcome(
+                text=text,
+                route="docling",
+                skeleton=True,
+                skeleton_reason=probe.reason,
+                block_counts=counts,
+            )
+            self._log_route(
+                filename,
+                outcome.route,
+                reason=f"skeleton_{probe.reason}",
+                metrics=metrics,
+                skeleton=True,
+                skeleton_reason=probe.reason,
+                block_counts=counts,
             )
             return outcome
 
@@ -296,26 +390,42 @@ class RoutedDocumentParser:
         )
         if ok:
             text = "\n\n".join(t.strip() for t in metrics.page_texts if t.strip())
-            outcome = ParseOutcome(text=text, route="pymupdf")
-            self._log_route(filename, outcome.route, reason="quality_ok", metrics=metrics)
+            outcome = ParseOutcome(
+                text=text,
+                route="pymupdf",
+                skeleton=False,
+                skeleton_reason="none",
+            )
+            self._log_route(
+                filename,
+                outcome.route,
+                reason="no_skeleton_quality_ok",
+                metrics=metrics,
+                skeleton=False,
+                skeleton_reason="none",
+            )
             return outcome
 
         logger.info(
-            "pdf_fast_path quality_fail filename=%s total_chars=%s cpp=%.1f "
-            "printable=%.3f empty_page_ratio=%.3f; falling back to docling",
+            "pdf_no_skeleton quality_fail filename=%s; falling back to docling",
             filename,
-            metrics.total_chars,
-            metrics.chars_per_page,
-            metrics.printable_ratio,
-            metrics.empty_page_ratio,
         )
-        text = self._get_docling().parse_to_markdown(filename, data)
-        outcome = ParseOutcome(text=text, route="docling")
+        text, counts = self._structure_via_docling(filename, data)
+        outcome = ParseOutcome(
+            text=text,
+            route="docling",
+            skeleton=False,
+            skeleton_reason="none",
+            block_counts=counts,
+        )
         self._log_route(
             filename,
             outcome.route,
-            reason="quality_fail",
+            reason="no_skeleton_quality_fail",
             metrics=metrics,
+            skeleton=False,
+            skeleton_reason="none",
+            block_counts=counts,
         )
         return outcome
 
@@ -326,14 +436,27 @@ class RoutedDocumentParser:
         *,
         reason: str,
         metrics: PdfFastMetrics | None = None,
+        skeleton: bool | None = None,
+        skeleton_reason: str | None = None,
+        block_counts: dict[str, int] | None = None,
     ) -> None:
         self.last_routes.append((filename, route))
         extra = ""
         if metrics is not None:
-            extra = (
+            extra += (
                 f" pages={metrics.page_count} total_chars={metrics.total_chars} "
                 f"cpp={metrics.chars_per_page:.1f} printable={metrics.printable_ratio:.3f} "
                 f"empty_page_ratio={metrics.empty_page_ratio:.3f}"
+            )
+        if skeleton is not None:
+            extra += f" skeleton={str(skeleton).lower()}"
+        if skeleton_reason:
+            extra += f" skeleton_reason={skeleton_reason}"
+        if block_counts:
+            extra += (
+                f" headings={block_counts.get('heading', 0)}"
+                f" tables={block_counts.get('table', 0)}"
+                f" images={block_counts.get('image', 0)}"
             )
         logger.info(
             "parse_route=%s filename=%s reason=%s%s",
