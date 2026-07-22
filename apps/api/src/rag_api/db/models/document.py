@@ -10,6 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from rag_api.db.models.base import RAG_SCHEMA, Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
+    from rag_api.db.models.document_chunk import DocumentChunk
     from rag_api.db.models.document_file import DocumentFile
     from rag_api.db.models.index_job import IndexJob
 
@@ -36,6 +37,10 @@ class Document(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         cascade="all, delete-orphan",
     )
     index_jobs: Mapped[list[IndexJob]] = relationship(
+        back_populates="document",
+        cascade="all, delete-orphan",
+    )
+    chunks: Mapped[list[DocumentChunk]] = relationship(
         back_populates="document",
         cascade="all, delete-orphan",
     )

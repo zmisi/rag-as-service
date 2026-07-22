@@ -9,7 +9,7 @@ DOC_TAGS = frozenset(
 DOC_STATUSES = frozenset({"draft", "review", "published"})
 
 ALLOWED_EXTENSIONS = frozenset(
-    {".txt", ".pdf", ".doc", ".docx", ".ppt", ".pptx"},
+    {".txt", ".md", ".pdf", ".doc", ".docx", ".ppt", ".pptx"},
 )
 
 MAX_FILE_BYTES = 20 * 1024 * 1024

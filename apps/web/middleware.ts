@@ -7,7 +7,7 @@ import {
 } from "@/lib/hosts";
 
 /** Paths that MUST only be served on the apex host (F01/F02). */
-const APEX_ONLY_PATHS = new Set(["/register"]);
+const APEX_ONLY_PATHS = new Set(["/register", "/login"]);
 
 export function middleware(request: NextRequest) {
   const hostHeader = request.headers.get("host") ?? "";
@@ -30,5 +30,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/register"],
+  matcher: ["/register", "/login"],
 };

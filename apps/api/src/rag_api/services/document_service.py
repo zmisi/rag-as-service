@@ -15,6 +15,8 @@ from rag_api.domain.documents.constants import (
     is_allowed_extension,
     is_valid_tag,
 )
+from rag_api.config import get_settings
+from rag_api.indexing.worker import deactivate_document_chunks, process_index_job
 from rag_api.services.storage_service import StorageService
 
 
@@ -215,6 +217,15 @@ def publish_document(
     db.add(job)
     db.commit()
     db.refresh(doc)
+    db.refresh(job)
+
+    settings = get_settings()
+    if settings.index_sync_on_publish:
+        try:
+            process_index_job(db, job.id)
+        except Exception:  # noqa: BLE001 — publish already committed; job may be failed
+            pass
+        db.refresh(doc)
     return doc
 
 
@@ -249,3 +260,19 @@ def latest_index_job(
         .order_by(IndexJob.create_at.desc())
         .limit(1)
     )
+
+
+def soft_delete_document(
+    db: Session,
+    *,
+    document_id: UUID,
+    tenant_id: UUID,
+) -> Document:
+    from datetime import datetime, timezone
+
+    doc = _get_document(db, document_id=document_id, tenant_id=tenant_id)
+    doc.deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    deactivate_document_chunks(db, tenant_id=tenant_id, document_id=document_id)
+    db.commit()
+    db.refresh(doc)
+    return doc

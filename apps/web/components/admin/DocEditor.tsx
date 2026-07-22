@@ -125,7 +125,7 @@ export function DocEditor({
                 type="file"
                 multiple
                 className="doc-file-input"
-                accept=".txt,.pdf,.doc,.docx,.ppt,.pptx"
+                accept=".txt,.md,.pdf,.doc,.docx,.ppt,.pptx"
                 onChange={(e) => {
                   if (e.target.files?.length) {
                     onUploadFiles(e.target.files);

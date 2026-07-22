@@ -25,7 +25,8 @@ class _Msg:
 def test_compress_history_keeps_recent() -> None:
     msgs = [_Msg("user" if i % 2 == 0 else "assistant", f"m{i}") for i in range(25)]
     assert len(msgs) > HISTORY_COMPRESS_AFTER_MESSAGES
-    out = compress_history(msgs)  # type: ignore[arg-type]
+    out, meta = compress_history(msgs)  # type: ignore[arg-type]
+    assert meta["compressed"] is True
     assert out[0]["role"] == "system"
     assert "历史摘要" in out[0]["content"]
     assert len(out) == 1 + KEEP_RECENT_MESSAGES

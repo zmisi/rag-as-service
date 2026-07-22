@@ -108,7 +108,7 @@ source .venv/bin/activate
 python scripts/seed_dev_tenant.py
 ```
 
-脚本会打印 `NEXT_PUBLIC_DEV_USER_ID=...`。若库里已有 `tenant-a` / `owner-a@example.com`，会直接复用。
+脚本会打印 `NEXT_PUBLIC_DEV_USER_ID=...` 以及登录凭据（默认 `owner-a@example.com` / `password123`）。若库里已有该用户，会重置密码为上述值。
 
 或手工查询：
 

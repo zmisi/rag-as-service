@@ -6,16 +6,18 @@ from functools import lru_cache
 
 from rag_api.clients.llm import DevStubLlmClient, LlmClient, QwenClient
 from rag_api.config import get_settings
-from rag_api.indexing.search import EmptyKnowledgeSearcher, KnowledgeSearcher
+from rag_api.db.session import get_session_factory
+from rag_api.indexing.embedding import get_embedder
+from rag_api.indexing.search import KnowledgeSearcher, PgKnowledgeSearcher
 
 
 @lru_cache
-def _default_searcher() -> EmptyKnowledgeSearcher:
-    return EmptyKnowledgeSearcher()
+def _default_searcher() -> PgKnowledgeSearcher:
+    # F04temp: always wire pgvector search (hashing embedder when no QWen emb).
+    return PgKnowledgeSearcher(get_session_factory(), embedder=get_embedder())
 
 
 def get_knowledge_searcher() -> KnowledgeSearcher:
-    """Production wires F04 search here; default empty until F04 is present."""
     return _default_searcher()
 
 

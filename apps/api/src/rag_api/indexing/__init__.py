@@ -1,10 +1,11 @@
-"""Indexing package — F04 seam (search)."""
+"""Indexing package — F04temp (chunk / embed / worker / search)."""
 
 from rag_api.indexing.search import (
     ChunkHit,
     EmptyKnowledgeSearcher,
     FakeKnowledgeSearcher,
     KnowledgeSearcher,
+    PgKnowledgeSearcher,
 )
 
 __all__ = [
@@ -12,4 +13,5 @@ __all__ = [
     "EmptyKnowledgeSearcher",
     "FakeKnowledgeSearcher",
     "KnowledgeSearcher",
+    "PgKnowledgeSearcher",
 ]

@@ -69,6 +69,7 @@ export const STATUS_LABELS: Record<DocStatus, string> = {
 
 export const ALLOWED_EXTENSIONS = [
   ".txt",
+  ".md",
   ".pdf",
   ".doc",
   ".docx",

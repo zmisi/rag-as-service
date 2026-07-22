@@ -19,10 +19,11 @@ from sqlalchemy.orm import Session
 
 from rag_api.config import get_settings
 from rag_api.db.models import Tenant, TenantMember, User
+from rag_api.domain.identity.password import hash_password
 
 SUBDOMAIN = "tenant-a"
 EMAIL = "owner-a@example.com"
-PASSWORD_HASH = "dev-stub-not-for-login"  # F02 not wired; hash unused by auth stub
+PASSWORD = "password123"
 DISPLAY_NAME = "Tenant A (dev)"
 
 
@@ -30,13 +31,16 @@ def main() -> None:
     engine = create_engine(get_settings().database_url)
     with Session(engine) as db:
         user = db.scalar(select(User).where(User.email == EMAIL))
+        password_hash = hash_password(PASSWORD)
         if user is None:
-            user = User(email=EMAIL, password_hash=PASSWORD_HASH)
+            user = User(email=EMAIL, password_hash=password_hash)
             db.add(user)
             db.flush()
             print(f"created user {EMAIL}")
         else:
-            print(f"user exists {EMAIL}")
+            user.password_hash = password_hash
+            db.flush()
+            print(f"user exists {EMAIL} (password reset)")
 
         tenant = db.scalar(select(Tenant).where(Tenant.subdomain == SUBDOMAIN))
         if tenant is None:
@@ -62,6 +66,7 @@ def main() -> None:
         db.commit()
         print()
         print(f"NEXT_PUBLIC_DEV_USER_ID={user.id}")
+        print(f"login: {EMAIL} / {PASSWORD}")
         print(f"Host: http://{SUBDOMAIN}.lxzxai.com:3000/chat")
 
 
