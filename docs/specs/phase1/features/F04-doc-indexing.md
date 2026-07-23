@@ -15,9 +15,9 @@
 ## 范围
 
 - 消费「文档已 publish」事件（或等价轮询 `index_job`）
-- 解析 `.txt` / `.pdf` / `.docx` / `.pptx`（与 F03 一致；不解析旧版 `.doc` / `.ppt`）
+- 解析 `.txt` / `.md` / `.pdf`（与 F03 Phase 1 一致；**不含** Office OOXML，见 Phase 2 [F08](../../phase2/features/F08-office-ooxml.md)）
 - **PDF 骨架感知双路由**：有骨架 → **Docling 结构路径**（打标签：H1/H2/H3…、段落、表格、图片占位；`do_ocr=false`）；无骨架纯文字 → **PyMuPDF**；无骨架但文字质量差/打开失败时可 fallback Docling
-- **Office 解析**：`.docx` / `.pptx` 固定 **Docling**（Phase 1 不走 PyMuPDF）
+- **Office 解析**：不在本 Feature；`.docx` / `.xlsx` / `.pptx` → F08（Docling）
 - **层级感知切块**：从解析结果（结构 Markdown）构建 **H1 / H2** 节树；更深标题并入最近的 H2 叶节；节内再按可配置 token 切出 leaf chunk
 - **仅 leaf** 写入 embedding / pgvector；节全文与 `path` 存于 `document_sections`
 - 推进版本行 **`index_status`**：`pending` → `processing` → `ready` / `failed`
@@ -35,7 +35,8 @@
 - **任意深**目录树（Phase 1 仅 H1/H2）
 - Dify 式 Parent-child 的「Full Doc」整篇 parent、或仅扁平 General 切块（无节树）
 - 持久化第三方解析器原生对象树（仅落自家 `document_sections` / `document_chunks`）
-- 对外 REST 检索网关（Phase 2）
+- 对外 REST 检索网关（Phase 2 F11）
+- Office OOXML 解析（Phase 2 F08）
 
 ## Flow
 
@@ -71,10 +72,6 @@ flowchart TD
     Q -->|是| P3[parse_route=pymupdf 纯文本]
     Q -->|否/打开失败| P4
   end
-  subgraph office [Office·Phase 1]
-    O0[.docx / .pptx] --> O1[Docling]
-    O1 --> O2[parse_route=docling]
-  end
   subgraph text [文本]
     T0[.txt / .md] --> T1[文本解码]
     T1 --> T2[parse_route=text]
@@ -82,9 +79,10 @@ flowchart TD
   P5 --> U[合并 → Section 树]
   P3 --> U
   P0e --> U
-  O2 --> U
   T2 --> U
 ```
+
+> Office（`.docx` / `.xlsx` / `.pptx`）解析图见 [F08](../../phase2/features/F08-office-ooxml.md)。
 
 ```mermaid
 flowchart LR
@@ -118,7 +116,7 @@ flowchart LR
      3. **有骨架（或 force）→ 结构路径 Docling**：`do_ocr=false`；识别并打标签 **H1/H2/H3…、段落、表格、图片**（图为占位/题注，不 OCR）；经 `ParseBlock` → Markdown；`parse_route=docling`。Docling 未安装 → 按规则 6 **failed**（禁止悄悄退回 flat PyMuPDF 冒充结构成功）。
      4. **无骨架 + 有字 → PyMuPDF 纯文本**：`parse_route=pymupdf`。质量门限（`PDF_FAST_*`）仅作无骨架路径辅助：乱码/质量差或打开失败时可 fallback Docling。
      5. **不得**仅因「字符够多」把有骨架 PDF 压成扁平原文。
-   - **`.docx` / `.pptx`**：固定 Docling（`do_ocr=false`）；`parse_route=docling`。
+   - **`.docx` / `.xlsx` / `.pptx`**：不在 Phase 1；见 F08。
    - **多文件文档**：按 `document_files` 顺序解析后合并进同一版本的节树（文件间可插入分隔，避免表粘连）；每文件独立选路由并写结构化日志（含 `skeleton` 信号）。
 9. **节树（层级）**：
    - Phase 1 索引叶节仅 **H1 / H2**（或 Markdown 等价）；解析层可保留 H3+ 标签，建树时更深标题**并入**最近的 H2 叶节（无 H2 则并入所属 H1）。
@@ -186,6 +184,6 @@ flowchart LR
 | F04-T12 | Given 同节内多 leaf 均可被同一 query 命中 When search | Then 同一 `section_id` 在结果中至多出现一次 | api |
 | F04-T13 | Given 无骨架、含可提取文字层的 PDF（独特短语）When 解析/索引 | Then `parse_route=pymupdf`；`skeleton=false`；search 可命中该短语 | unit |
 | F04-T14 | Given 无骨架且文字质量不达标（或打开失败）When 解析 | Then fallback Docling；`parse_route=docling` | unit |
-| F04-T15 | Given `.docx` publish When 索引 | Then 不经 PyMuPDF；`parse_route=docling`（或 Docling mock）；job=succeeded | unit |
+| F04-T15 | （已迁至 F08）Office `.docx` / `.pptx` / `.xlsx` 解析与索引 | 见 [F08](../../phase2/features/F08-office-ooxml.md) | — |
 | F04-T16 | Given 有 TOC/骨架的 PDF When 解析 | Then `skeleton=true`；`parse_route=docling`；导出含多级 heading（及表/图标签若存在） | unit |
 | F04-T17 | Given 判定有骨架但 Docling 不可用 When 索引 | Then job/index failed；不写入「假结构成功」的单节 flat 结果冒充结构路径 | unit |

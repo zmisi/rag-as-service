@@ -18,7 +18,8 @@
 - 上传流程：draft / save / submit for review / publish
 - Tag 分类：News、SOP、Best Practice、Knowledge base、FAQ（可扩展枚举）
 - 版本：整数 `version` 从 **1** 起；Admin 展示为 **`v{N}`**（如 `v1`、`v2`）
-- 文件类型：`.txt` / `.md` / `.pdf` / `.docx` / `.pptx`（不支持旧版 `.doc` / `.ppt`，须另存为 OOXML）
+- 文件类型（Phase 1）：`.txt` / `.md` / `.pdf`；**不支持** `.docx` / `.xlsx` / `.pptx`（属 [F08](../../phase2/features/F08-office-ooxml.md)）及旧版 `.doc` / `.ppt` / `.xls`
+
 - 列表默认 `is_latest=true` 版本行；按 tag 过滤、查看当前版本
 - Admin UI 见 [F03-doc-admin-ui.md](F03-doc-admin-ui.md)（左右分栏：左列表 / 右操作）
 
@@ -26,10 +27,11 @@
 
 - 解析/分块/embedding（F04）
 - 文档版本行 schema / 双状态列迁移（F07）
-- SOP 内容强制验证门禁（Phase 2：验证失败不可 publish）
-- 对外 API（Phase 2）
+- SOP 内容强制验证门禁（Phase 3）
+- Office OOXML 上传与解析（`.docx` / `.xlsx` / `.pptx` → Phase 2 F08）
+- 对外 API（Phase 2 F11）
 - 公开匿名上传
-- 独立文件夹实体的完整 ACL / 跨租户共享目录（Phase 1 仅本租户内路径分组）
+- 独立文件夹实体的完整 ACL / 跨租户共享目录（Phase 2 F09）
 - Phase 1 Admin **仅展示 latest**（历史版本只读 UI 不做）
 
 ## Admin UI
@@ -234,7 +236,7 @@ sequenceDiagram
 5. **Publish**：仅 `review` 可 publish → `published`；成功后必须触发索引（F04），版本行 `index_status=pending`。
 6. Tag 为受控枚举（存储值 → 界面展示名）：`news` 公告动态 | `sop` 标准操作规程 | `best_practice` 最佳实践 | `knowledge_base` 知识库 | `faq` 常见问题。填写说明见 [F03-doc-admin-ui.md](F03-doc-admin-ui.md) §字段中文说明。
 7. **版本**：整数列 `version`；首次创建/首版为 **1**（展示 **`v1`**）；此后每次从已发布再编辑并重新走完发布流，同组 `version` **+1**（如 1→2，展示 `v2`）。**不用** text `1.0` / minor+0.1。
-8. 允许扩展名仅 `.txt` / `.pdf` / `.docx` / `.pptx`；拒绝其它类型（含 `.exe`）及旧版 `.doc` / `.ppt`（须提示另存为 OOXML）；单文件大小上限 **20MB**。
+8. 允许扩展名仅 `.txt` / `.md` / `.pdf`；拒绝其它类型（含 `.exe`、`.docx` / `.pptx` / `.xlsx` 直至 F08、以及旧版 `.doc` / `.ppt` / `.xls`）；单文件大小上限 **20MB**。
 9. 删除：Phase 1 允许软删除 `deleted_at`；若曾 published，须通知 F04 将相关 section/chunk 置 **`is_latest=false`**（见 F04）。
 10. **`review` 中若修改元数据或文件**：`publish_status` 回退为 `draft`，须重新 Submit for Review（防止未校验内容直接 publish）。
 11. **Admin UI**：`/admin` 必须为左 List / 右操作分栏；列表支持发布态过滤、「对外发布」「对内分享」视图与目录树；右侧承载新建/更新/删除及状态推进（见「Admin UI」与 [F03-doc-admin-ui.md](F03-doc-admin-ui.md)）。
@@ -265,7 +267,7 @@ sequenceDiagram
 | F03-T05 | Given `publish_status`=`review` When publish | Then `publish_status`=`published`；`version=1`（展示 `v1`）；`index_status=pending`；产生索引任务事件/记录 | api |
 | F03-T06 | Given tag=`unknown` When save | Then 4xx | api |
 | F03-T07 | Given 上传 `.exe` When save | Then 4xx | api |
-| F03-T07b | Given 上传 `.doc` 或 `.ppt` When save | Then 4xx；提示另存为 `.docx` / `.pptx` | api |
+| F03-T07b | Given 上传 `.doc` / `.ppt` / `.docx` / `.pptx` / `.xlsx` When save（Phase 1） | Then 4xx；Office OOXML 由 F08 启用 | api |
 | F03-T08 | Given 文件 >20MB When save | Then 4xx | api |
 | F03-T09 | Given tenant-A 文档 id When tenant-B 成员 GET | Then 404 或 403 | api |
 | F03-T10 | Given 已 published `version=1`（展示 v1）When 编辑再 publish | Then 新 `version`>1（如 `2`，展示 `v2`）；旧版本策略在响应中可区分（`is_latest`） | api |

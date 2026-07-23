@@ -302,7 +302,7 @@ erDiagram
 
 ### 4.6 `document_files` — 文档源文件
 
-**表注释**：文档版本关联的存储对象；`document_id` FK → **版本行** `documents.id`；单文件 ≤20MB；类型限 `.txt`/`.pdf`/`.docx`/`.pptx`（不含旧版 `.doc`/`.ppt`）。
+**表注释**：文档版本关联的存储对象；`document_id` FK → **版本行** `documents.id`；单文件 ≤20MB；Phase 1 类型限 `.txt`/`.md`/`.pdf`；Office OOXML（`.docx`/`.xlsx`/`.pptx`）见 Phase 2 F08。
 
 | 字段 | 类型 | 约束 | 注释 |
 |------|------|------|------|
