@@ -63,14 +63,38 @@ class Settings(BaseSettings):
         alias="QWEN_BASE_URL",
     )
     qwen_model: str = Field(default="qwen-plus", alias="QWEN_MODEL")
-    # F04temp: when true and QWEN_API_KEY set, use DashScope embeddings; else hashing.
+    # F04: when true and QWEN_API_KEY set, use DashScope embeddings; else hashing.
     qwen_embedding_enabled: bool = Field(default=False, alias="QWEN_EMBEDDING_ENABLED")
     qwen_embedding_model: str = Field(
         default="text-embedding-v4",
         alias="QWEN_EMBEDDING_MODEL",
     )
-    # F04temp: process index_job inline after publish (convenient for local e2e).
+    embedding_dim: int = Field(default=1024, alias="EMBEDDING_DIM")
+    chunk_target_tokens: int = Field(default=800, alias="CHUNK_TARGET_TOKENS")
+    chunk_overlap_tokens: int = Field(default=100, alias="CHUNK_OVERLAP_TOKENS")
+    # F04: process index_job inline after publish (convenient for local e2e).
     index_sync_on_publish: bool = Field(default=True, alias="INDEX_SYNC_ON_PUBLISH")
+    # F04 PDF PyMuPDF fast-path quality gate (conservative defaults).
+    pdf_fast_min_chars: int = Field(default=80, alias="PDF_FAST_MIN_CHARS")
+    pdf_fast_min_chars_per_page: float = Field(
+        default=40.0,
+        alias="PDF_FAST_MIN_CHARS_PER_PAGE",
+    )
+    pdf_fast_min_printable_ratio: float = Field(
+        default=0.85,
+        alias="PDF_FAST_MIN_PRINTABLE_RATIO",
+    )
+    pdf_fast_max_empty_page_ratio: float = Field(
+        default=0.50,
+        alias="PDF_FAST_MAX_EMPTY_PAGE_RATIO",
+    )
+    # F04 PDF skeleton detection → structure path (Docling).
+    pdf_skeleton_min_toc: int = Field(default=1, alias="PDF_SKELETON_MIN_TOC")
+    pdf_skeleton_min_heading_candidates: int = Field(
+        default=3,
+        alias="PDF_SKELETON_MIN_HEADING_CANDIDATES",
+    )
+    pdf_force_structure: bool = Field(default=False, alias="PDF_FORCE_STRUCTURE")
 
 
 @lru_cache

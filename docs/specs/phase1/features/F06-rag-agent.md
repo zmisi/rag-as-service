@@ -1,6 +1,6 @@
 # F06 RAG Agent
 
-> 租户站通用 RAG Agent：上下文组装、多轮记忆与压缩、工具调用、Agent Loop；LLM = QWen；检索走 F04。  
+> 租户站通用 RAG Agent：上下文组装、多轮记忆与压缩、工具调用、Agent Loop；LLM = QWen；检索走 **F04 `search`**。  
 > **不做**前置意图分类：每轮用户消息一律进入 Agent Loop，由模型决定是否调用 `search_knowledge` 及检索 query。
 
 
@@ -16,14 +16,15 @@
 - 在 `active` 会话中接收用户消息并回复（依赖 F05）
 - 上下文组装：system prompt + 历史 + 规则 + 检索片段
 - 长对话压缩（超出窗口时）
-- 工具调用：至少 `search_knowledge`（封装 F04 search）
+- 工具调用：至少 `search_knowledge`（封装 **F04 `search`**：active leaf top-k → 节全文 + `path`）
 - Agent Loop：多步工具 → 观察 → 再推理，直至终止
 - 流式或非流式响应均可，但须可测最终 assistant 消息落库
 
 ## 非范围
 
 - 前置意图分类 / 路由（`rag_search` / `chitchat` / `clarify` 等）
-- 文档上传与发布（F03/F04）
+- 文档上传与发布（F03）
+- **解析 / 分块 / embedding / index_job / 向量 `search`**（F04）
 - 会话列表 UI 细节（F05）
 - 对外 REST API 网关（Phase 2）
 - 非 RAG 业务工作流编排（仅预留路由扩展点）
@@ -78,7 +79,7 @@ flowchart TD
    - `MAX_STEPS = 5`（含最终回答那一步的模型调用）
    - 终止：`final_answer`、或步数耗尽、或不可恢复错误
    - 工具名白名单：Phase 1 仅 `search_knowledge`
-7. **search_knowledge**：参数含 `query`；内部调用 F04；只返回 active published chunks；`tenant_id` 仅来自请求上下文，不得由模型参数传入。
+7. **search_knowledge**：参数含 `query`；内部调用 **F04 `search`**；只返回 active published 命中；每条为 **节全文 + `path`**（形状见 F04）；`tenant_id` 仅来自请求上下文，不得由模型参数传入。
 8. 无检索命中时：回答须表明知识库无相关内容，**禁止编造**文档事实（可用固定话术 + 测试断言关键子串/分类器桩）。
 9. 每轮用户消息与最终 assistant 消息必须经 F05 持久化；tool 轨迹可写入 `message.meta` 或独立表，须可被测试查询。
 
@@ -90,7 +91,7 @@ flowchart TD
 
 时间戳列 `create_at` / `update_at` 见 [00-constraints.mdc](../../../../.cursor/rules/00-constraints.mdc) §3.2。
 | 配置常量 | `MAX_STEPS=5`, `HISTORY_COMPRESS_AFTER_MESSAGES=20`, `KEEP_RECENT_MESSAGES=6`, `LLM_TIMEOUT_S=60` |
-| 工具 | `search_knowledge(query: string) -> {chunks: [...]}` |
+| 工具 | `search_knowledge(query: string) -> {chunks: [{document_id, chunk_id, section_id, path, content, score}, ...]}`（`content`=节全文） |
 
 - `used_search`：本轮是否至少执行过一次 `search_knowledge`（观测字段，非路由前置条件）。
 

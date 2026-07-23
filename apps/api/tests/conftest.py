@@ -18,7 +18,9 @@ from rag_api.db.models import (
     AgentRunStep,
     Conversation,
     Document,
+    DocumentChunk,
     DocumentFile,
+    DocumentSection,
     IndexJob,
     Message,
     Tenant,
@@ -108,6 +110,8 @@ def tenants(db: Session) -> dict:
     db.execute(delete(Message))
     db.execute(delete(AgentRun))
     db.execute(delete(Conversation))
+    db.execute(delete(DocumentChunk))
+    db.execute(delete(DocumentSection))
     db.execute(delete(IndexJob))
     db.execute(delete(DocumentFile))
     db.execute(delete(Document))

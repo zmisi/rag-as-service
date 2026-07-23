@@ -87,7 +87,7 @@ alwaysApply: true
 - 文档状态机：`draft` → `review` → `published`（细节见 F03）。
 - **仅 `published` 文档进入索引**（F04）；未发布文档不可被 RAG 检索（F06）。
 - Phase 1 的 `review` 是可测状态，**不做 SOP 内容强制校验**（SOP 门禁属 Phase 2）。
-- 支持类型：txt / md / pdf / word / ppt。
+- 支持类型：`.txt` / `.md` / `.pdf` / `.docx` / `.pptx`（不支持旧版 `.doc` / `.ppt`）。
 - 版本从 `1.0` 起。
 
 ## 6. Agent（Phase 1）

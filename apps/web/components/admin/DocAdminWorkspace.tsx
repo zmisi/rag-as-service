@@ -16,7 +16,7 @@ import {
   uploadDocumentFile,
 } from "@/lib/api";
 import type { DocDetail, DocSummary, DocTag, IndexJobStatus } from "@/lib/documents";
-import { isAllowedFile, MAX_FILE_BYTES } from "@/lib/documents";
+import { fileTypeRejectMessage, isAllowedFile, MAX_FILE_BYTES } from "@/lib/documents";
 
 export function DocAdminWorkspace() {
   const [documents, setDocuments] = useState<DocSummary[]>([]);
@@ -37,11 +37,13 @@ export function DocAdminWorkspace() {
     return items;
   }, []);
 
-  const loadDetail = useCallback(async (id: string) => {
+  const loadDetail = useCallback(async (id: string, opts?: { preserveForm?: boolean }) => {
     const doc = await getDocument(id);
     setDetail(doc);
-    setTitle(doc.title);
-    setTag(doc.tag);
+    if (!opts?.preserveForm) {
+      setTitle(doc.title);
+      setTag(doc.tag);
+    }
     setValidationErrors([]);
     if (doc.status === "published") {
       const job = await getIndexStatus(id);
@@ -170,6 +172,10 @@ export function DocAdminWorkspace() {
     try {
       const doc = await newDocumentVersion(selectedId);
       setDetail(doc);
+      setSelectedId(doc.id);
+      setTitle(doc.title);
+      setTag(doc.tag);
+      setIndexJob(null);
       await refreshList();
     } catch (e) {
       setError(e instanceof Error ? e.message : "创建新版本失败");
@@ -180,19 +186,24 @@ export function DocAdminWorkspace() {
 
   async function handleUploadFiles(files: FileList) {
     if (!selectedId) return;
+    // Snapshot before any await: clearing <input type="file"> empties the live FileList.
+    const selectedFiles = Array.from(files);
     setBusy(true);
     setError(null);
     try {
-      for (const file of Array.from(files)) {
+      // Persist draft fields before upload; loadDetail would otherwise reset unsaved title/tag.
+      await saveDocument(selectedId, { title, tag: tag || undefined });
+
+      for (const file of selectedFiles) {
         if (!isAllowedFile(file.name)) {
-          throw new Error(`不支持的文件类型：${file.name}`);
+          throw new Error(`${fileTypeRejectMessage(file.name)}：${file.name}`);
         }
         if (file.size > MAX_FILE_BYTES) {
           throw new Error(`文件超过 20MB：${file.name}`);
         }
         await uploadDocumentFile(selectedId, file);
       }
-      await loadDetail(selectedId);
+      await loadDetail(selectedId, { preserveForm: true });
       await refreshList();
     } catch (e) {
       setError(e instanceof Error ? e.message : "上传失败");

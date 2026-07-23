@@ -7,8 +7,7 @@ import { IndexJobStatusCard } from "@/components/admin/IndexJobStatusCard";
 import {
   TAG_OPTIONS,
   formatBytes,
-  isAllowedFile,
-  MAX_FILE_BYTES,
+  formatVersionDisplay,
   tagLabel,
   type DocDetail,
   type DocTag,
@@ -68,7 +67,7 @@ export function DocEditor({
       "",
       `标题：${title.trim() || doc.title}`,
       `分类：${tag ? tagLabel(tag) : "—"}`,
-      `版本：${doc.version === "0.0" ? "1.0（首版）" : doc.version}`,
+      `版本：${formatVersionDisplay(doc.version)}`,
       `文件：${doc.files.length} 个`,
       "",
       "发布后将建立知识库索引，供 AI 问答检索。",
@@ -125,7 +124,7 @@ export function DocEditor({
                 type="file"
                 multiple
                 className="doc-file-input"
-                accept=".txt,.md,.pdf,.doc,.docx,.ppt,.pptx"
+                accept=".txt,.md,.pdf,.docx,.pptx"
                 onChange={(e) => {
                   if (e.target.files?.length) {
                     onUploadFiles(e.target.files);
@@ -142,7 +141,7 @@ export function DocEditor({
                 选择文件
               </button>
               <p className="doc-hint">
-                支持 txt / pdf / word / ppt，单文件 ≤ 20MB
+                支持 .txt / .md / .pdf / .docx / .pptx，单文件 ≤ 20MB（不支持旧版 .doc / .ppt）
               </p>
             </>
           ) : null}
@@ -210,9 +209,9 @@ export function DocEditor({
         ) : null}
       </div>
 
-      {doc.version !== "0.0" ? (
-        <p className="doc-version-line">当前版本：v{doc.version}</p>
-      ) : null}
+      <p className="doc-version-line">
+        当前版本：{formatVersionDisplay(doc.version)}
+      </p>
 
       <IndexJobStatusCard
         job={indexJob}

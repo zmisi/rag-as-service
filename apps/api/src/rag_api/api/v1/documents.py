@@ -13,6 +13,8 @@ from rag_api.api.schemas.documents import (
     DocumentSaveRequest,
     DocumentSummaryOut,
     IndexJobOut,
+    document_to_detail,
+    document_to_summary,
 )
 from rag_api.db.session import get_db
 from rag_api.services import document_service as doc_svc
@@ -33,7 +35,7 @@ def create_document(
     doc = doc_svc.create_document(
         db, tenant_id=auth.tenant_id, user_id=auth.user_id
     )
-    return DocumentSummaryOut.model_validate(doc)
+    return document_to_summary(doc)
 
 
 @router.get("", response_model=list[DocumentSummaryOut])
@@ -43,7 +45,7 @@ def list_documents(
     auth: AuthContext = Depends(require_tenant_member),
 ) -> list[DocumentSummaryOut]:
     items = doc_svc.list_documents(db, tenant_id=auth.tenant_id, tag=tag)
-    return [DocumentSummaryOut.model_validate(d) for d in items]
+    return [document_to_summary(d) for d in items]
 
 
 @router.post("/index/run-pending", response_model=list[IndexJobOut])
@@ -51,7 +53,7 @@ def run_pending_index_jobs(
     db: Session = Depends(get_db),
     auth: AuthContext = Depends(require_tenant_member),
 ) -> list[IndexJobOut]:
-    """F04temp: drain pending index_jobs for local e2e."""
+    """Drain pending index_jobs for local e2e."""
     from rag_api.indexing.worker import process_pending_jobs
 
     jobs = process_pending_jobs(db, limit=50)
@@ -68,7 +70,7 @@ def get_document(
     doc = doc_svc.get_document_detail(
         db, document_id=document_id, tenant_id=auth.tenant_id
     )
-    return DocumentDetailOut.model_validate(doc)
+    return document_to_detail(doc)
 
 
 @router.patch("/{document_id}", response_model=DocumentDetailOut)
@@ -85,7 +87,7 @@ def save_document(
         title=body.title,
         tag=body.tag,
     )
-    return DocumentDetailOut.model_validate(doc)
+    return document_to_detail(doc)
 
 
 @router.post(
@@ -114,7 +116,7 @@ async def upload_file(
     doc = doc_svc.get_document_detail(
         db, document_id=document_id, tenant_id=auth.tenant_id
     )
-    return DocumentDetailOut.model_validate(doc)
+    return document_to_detail(doc)
 
 
 @router.post("/{document_id}/submit-review", response_model=DocumentDetailOut)
@@ -126,7 +128,7 @@ def submit_for_review(
     doc = doc_svc.submit_for_review(
         db, document_id=document_id, tenant_id=auth.tenant_id
     )
-    return DocumentDetailOut.model_validate(doc)
+    return document_to_detail(doc)
 
 
 @router.post("/{document_id}/publish", response_model=DocumentDetailOut)
@@ -138,7 +140,7 @@ def publish_document(
     doc = doc_svc.publish_document(
         db, document_id=document_id, tenant_id=auth.tenant_id
     )
-    return DocumentDetailOut.model_validate(doc)
+    return document_to_detail(doc)
 
 
 @router.post("/{document_id}/new-version", response_model=DocumentDetailOut)
@@ -150,7 +152,7 @@ def new_version(
     doc = doc_svc.new_version(
         db, document_id=document_id, tenant_id=auth.tenant_id
     )
-    return DocumentDetailOut.model_validate(doc)
+    return document_to_detail(doc)
 
 
 @router.get("/{document_id}/index-status", response_model=IndexJobOut | None)

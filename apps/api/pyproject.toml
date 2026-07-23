@@ -15,12 +15,16 @@ dependencies = [
     "email-validator>=2.2.0",
     "python-multipart>=0.0.9",
     "httpx>=0.27.0",
+    "pymupdf>=1.24.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.3.0",
     "httpx>=0.27.0",
+]
+docling = [
+    "docling>=2.0.0",
 ]
 
 [project.scripts]
@@ -41,4 +45,5 @@ filterwarnings = [
 ]
 markers = [
     "integration: tests requiring PostgreSQL (DATABASE_URL)",
+    "docling: tests requiring docling package",
 ]

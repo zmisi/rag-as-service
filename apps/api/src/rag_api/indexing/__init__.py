@@ -1,4 +1,4 @@
-"""Indexing package — F04temp (chunk / embed / worker / search)."""
+"""Indexing package — F04 (parse / sections / chunk / embed / search)."""
 
 from rag_api.indexing.search import (
     ChunkHit,
