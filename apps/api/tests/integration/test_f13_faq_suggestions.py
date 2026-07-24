@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+from uuid import UUID
 
 import pytest
 from sqlalchemy import select
@@ -41,7 +42,14 @@ def _create_upload_publish(client, headers, *, title: str, tag: str = "faq") -> 
     return pub.json()
 
 
-def _set_clicks(db: Session, *, tenant_id, document_group_id, click_count: int) -> None:
+def _set_stats(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    document_group_id: UUID,
+    click_count: int = 0,
+    is_hot: bool = False,
+) -> None:
     stats = db.scalar(
         select(FaqSuggestionStats).where(
             FaqSuggestionStats.tenant_id == tenant_id,
@@ -53,35 +61,35 @@ def _set_clicks(db: Session, *, tenant_id, document_group_id, click_count: int) 
             tenant_id=tenant_id,
             document_group_id=document_group_id,
             click_count=click_count,
+            is_hot=is_hot,
         )
         db.add(stats)
     else:
         stats.click_count = click_count
+        stats.is_hot = is_hot
     db.commit()
 
 
 @pytest.mark.integration
-def test_f13_t01_t02_top5_sorted_hot(
-    client_a, tenants: dict, db: Session
-):
-    """F13-T01/T02: ≥5 FAQs → 5 items, click_count desc, first hot."""
-    docs = []
-    for i in range(6):
-        docs.append(
-            _create_upload_publish(client_a, HEADERS_A, title=f"FAQ {i}")
-        )
-    # Make FAQ 3 hottest, then FAQ 1
-    _set_clicks(
+def test_f13_t01_five_with_two_hot(client_a, tenants: dict, db: Session):
+    """F13-T01: ≥5 FAQs with 2 is_hot → 5 items; first 2 hot, rest not."""
+    docs = [
+        _create_upload_publish(client_a, HEADERS_A, title=f"FAQ {i}") for i in range(6)
+    ]
+    tenant_id = tenants["tenant_a"].tenant_id
+    _set_stats(
         db,
-        tenant_id=tenants["tenant_a"].tenant_id,
+        tenant_id=tenant_id,
         document_group_id=docs[3]["document_group_id"],
-        click_count=50,
+        is_hot=True,
+        click_count=1,
     )
-    _set_clicks(
+    _set_stats(
         db,
-        tenant_id=tenants["tenant_a"].tenant_id,
+        tenant_id=tenant_id,
         document_group_id=docs[1]["document_group_id"],
-        click_count=20,
+        is_hot=True,
+        click_count=2,
     )
 
     resp = client_a.get("/v1/portal/faq-suggestions", headers=HEADERS_A)
@@ -89,21 +97,60 @@ def test_f13_t01_t02_top5_sorted_hot(
     body = resp.json()
     assert len(body) == 5
     assert body[0]["hot"] is True
-    assert all(item["hot"] is False for item in body[1:])
-    assert body[0]["document_group_id"] == docs[3]["document_group_id"]
-    assert body[0]["click_count"] == 50
-    assert body[1]["document_group_id"] == docs[1]["document_group_id"]
-    clicks = [item["click_count"] for item in body]
-    assert clicks == sorted(clicks, reverse=True)
+    assert body[1]["hot"] is True
+    assert all(item["hot"] is False for item in body[2:])
+    hot_ids = {body[0]["document_group_id"], body[1]["document_group_id"]}
+    assert hot_ids == {
+        docs[1]["document_group_id"],
+        docs[3]["document_group_id"],
+    }
+    # Among hots, higher click_count first
+    assert body[0]["document_group_id"] == docs[1]["document_group_id"]
+
+
+@pytest.mark.integration
+def test_f13_t02_hot_beats_higher_clicks(client_a, tenants: dict, db: Session):
+    """F13-T02: is_hot ranks above non-hot even when non-hot has more clicks."""
+    hot_doc = _create_upload_publish(client_a, HEADERS_A, title="Marked Hot")
+    cold_doc = _create_upload_publish(client_a, HEADERS_A, title="High Clicks")
+    tenant_id = tenants["tenant_a"].tenant_id
+    _set_stats(
+        db,
+        tenant_id=tenant_id,
+        document_group_id=hot_doc["document_group_id"],
+        is_hot=True,
+        click_count=1,
+    )
+    _set_stats(
+        db,
+        tenant_id=tenant_id,
+        document_group_id=cold_doc["document_group_id"],
+        is_hot=False,
+        click_count=99,
+    )
+
+    body = client_a.get("/v1/portal/faq-suggestions", headers=HEADERS_A).json()
+    assert body[0]["document_group_id"] == hot_doc["document_group_id"]
+    assert body[0]["hot"] is True
+    assert body[1]["document_group_id"] == cold_doc["document_group_id"]
+    assert body[1]["hot"] is False
 
 
 @pytest.mark.integration
 def test_f13_t03_click_increments(client_a, tenants: dict, db: Session):
-    """F13-T03: click → click_count+1 and question text returned."""
+    """F13-T03: click → click_count+1; is_hot unchanged; question returned."""
     doc = _create_upload_publish(client_a, HEADERS_A, title="How to reset?")
     group_id = doc["document_group_id"]
+    _set_stats(
+        db,
+        tenant_id=tenants["tenant_a"].tenant_id,
+        document_group_id=group_id,
+        is_hot=True,
+        click_count=0,
+    )
     before = client_a.get("/v1/portal/faq-suggestions", headers=HEADERS_A).json()
     assert before[0]["click_count"] == 0
+    assert before[0]["hot"] is True
 
     clicked = client_a.post(
         f"/v1/portal/faq-suggestions/{group_id}/click", headers=HEADERS_A
@@ -112,9 +159,11 @@ def test_f13_t03_click_increments(client_a, tenants: dict, db: Session):
     payload = clicked.json()
     assert payload["question"] == "How to reset?"
     assert payload["click_count"] == 1
+    assert payload["hot"] is True
 
     after = client_a.get("/v1/portal/faq-suggestions", headers=HEADERS_A).json()
     assert after[0]["click_count"] == 1
+    assert after[0]["hot"] is True
     stats = db.scalar(
         select(FaqSuggestionStats).where(
             FaqSuggestionStats.tenant_id == tenants["tenant_a"].tenant_id,
@@ -123,34 +172,57 @@ def test_f13_t03_click_increments(client_a, tenants: dict, db: Session):
     )
     assert stats is not None
     assert stats.click_count == 1
+    assert stats.is_hot is True
 
 
 @pytest.mark.integration
-def test_f13_t04_refresh_batch(client_a, db: Session, tenants: dict):
-    """F13-T04: offset page advances; new first item is hot."""
+def test_f13_t04_refresh_batch_keeps_hot(client_a, db: Session, tenants: dict):
+    """F13-T04: refresh rotates non-hot only; hot stays first."""
     docs = [
         _create_upload_publish(client_a, HEADERS_A, title=f"Batch FAQ {i}")
         for i in range(7)
     ]
-    for i, doc in enumerate(docs):
-        _set_clicks(
+    tenant_id = tenants["tenant_a"].tenant_id
+    hot_a = docs[0]
+    hot_b = docs[1]
+    _set_stats(
+        db,
+        tenant_id=tenant_id,
+        document_group_id=hot_a["document_group_id"],
+        is_hot=True,
+        click_count=10,
+    )
+    _set_stats(
+        db,
+        tenant_id=tenant_id,
+        document_group_id=hot_b["document_group_id"],
+        is_hot=True,
+        click_count=5,
+    )
+    for i, doc in enumerate(docs[2:]):
+        _set_stats(
             db,
-            tenant_id=tenants["tenant_a"].tenant_id,
+            tenant_id=tenant_id,
             document_group_id=doc["document_group_id"],
             click_count=100 - i,
+            is_hot=False,
         )
 
     first = client_a.get(
         "/v1/portal/faq-suggestions", params={"offset": 0}, headers=HEADERS_A
     ).json()
+    # normals_page = 3; advance by 3
     second = client_a.get(
-        "/v1/portal/faq-suggestions", params={"offset": 5}, headers=HEADERS_A
+        "/v1/portal/faq-suggestions", params={"offset": 3}, headers=HEADERS_A
     ).json()
     assert len(first) == 5
-    assert first[0]["hot"] is True
-    assert second[0]["hot"] is True
-    assert first[0]["document_group_id"] != second[0]["document_group_id"]
-    # Remaining 2 + cycle into first of ranked list
+    assert first[0]["hot"] is True and first[1]["hot"] is True
+    assert second[0]["hot"] is True and second[1]["hot"] is True
+    assert first[0]["document_group_id"] == second[0]["document_group_id"]
+    assert first[1]["document_group_id"] == second[1]["document_group_id"]
+    first_normals = {item["document_group_id"] for item in first[2:]}
+    second_normals = {item["document_group_id"] for item in second[2:]}
+    assert first_normals != second_normals
     assert len(second) == 5
 
 
@@ -191,11 +263,12 @@ def test_f13_t06_excludes_draft_and_non_faq(client_a):
 def test_f13_t07_tenant_isolation(client_a, switch_to_b, tenants: dict, db: Session):
     """F13-T07: tenant-B cannot see tenant-A FAQ or heat."""
     doc = _create_upload_publish(client_a, HEADERS_A, title="Tenant A FAQ")
-    _set_clicks(
+    _set_stats(
         db,
         tenant_id=tenants["tenant_a"].tenant_id,
         document_group_id=doc["document_group_id"],
         click_count=9,
+        is_hot=True,
     )
 
     client_b = switch_to_b()
@@ -207,9 +280,9 @@ def test_f13_t07_tenant_isolation(client_a, switch_to_b, tenants: dict, db: Sess
     )
     assert click_b.status_code == 404
 
-    # Switch back to A: heat unchanged by B's failed click
     token = issue_session_for_user(db, tenants["user_a"].user_id)
     set_client_session_cookie(client_a, token, host=HEADERS_A["Host"])
     body_a = client_a.get("/v1/portal/faq-suggestions", headers=HEADERS_A).json()
     assert body_a[0]["question"] == "Tenant A FAQ"
     assert body_a[0]["click_count"] == 9
+    assert body_a[0]["hot"] is True

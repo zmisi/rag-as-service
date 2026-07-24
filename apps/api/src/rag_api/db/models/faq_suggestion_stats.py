@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import ForeignKey, Integer, text
+from sqlalchemy import Boolean, ForeignKey, Integer, text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
 
@@ -21,4 +21,7 @@ class FaqSuggestionStats(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     document_group_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
     click_count: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default=text("0"), default=0
+    )
+    is_hot: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false"), default=False
     )

@@ -25,7 +25,16 @@ class FaqSuggestionItem:
     hot: bool
 
 
-def _click_map(db: Session, *, tenant_id: UUID, group_ids: list[UUID]) -> dict[UUID, int]:
+@dataclass
+class _Candidate:
+    doc: Document
+    click_count: int
+    is_hot: bool
+
+
+def _stats_map(
+    db: Session, *, tenant_id: UUID, group_ids: list[UUID]
+) -> dict[UUID, FaqSuggestionStats]:
     if not group_ids:
         return {}
     rows = db.scalars(
@@ -34,11 +43,11 @@ def _click_map(db: Session, *, tenant_id: UUID, group_ids: list[UUID]) -> dict[U
             FaqSuggestionStats.document_group_id.in_(group_ids),
         )
     ).all()
-    return {r.document_group_id: r.click_count for r in rows}
+    return {r.document_group_id: r for r in rows}
 
 
-def list_faq_candidates(db: Session, *, tenant_id: UUID) -> list[tuple[Document, int]]:
-    """Published latest FAQ docs with click_count, hottest first."""
+def list_faq_candidates(db: Session, *, tenant_id: UUID) -> list[_Candidate]:
+    """Published latest FAQ docs with click_count and is_hot."""
     docs = list(
         db.scalars(
             select(Document).where(
@@ -50,10 +59,24 @@ def list_faq_candidates(db: Session, *, tenant_id: UUID) -> list[tuple[Document,
             )
         ).all()
     )
-    clicks = _click_map(db, tenant_id=tenant_id, group_ids=[d.doc_group_id for d in docs])
-    ranked = [(d, clicks.get(d.doc_group_id, 0)) for d in docs]
-    ranked.sort(key=lambda item: (-item[1], item[0].doc_name.lower(), str(item[0].doc_group_id)))
-    return ranked
+    stats = _stats_map(db, tenant_id=tenant_id, group_ids=[d.doc_group_id for d in docs])
+    ranked: list[_Candidate] = []
+    for d in docs:
+        row = stats.get(d.doc_group_id)
+        ranked.append(
+            _Candidate(
+                doc=d,
+                click_count=row.click_count if row is not None else 0,
+                is_hot=bool(row.is_hot) if row is not None else False,
+            )
+        )
+
+    def sort_key(item: _Candidate) -> tuple:
+        return (-item.click_count, item.doc.doc_name.lower(), str(item.doc.doc_group_id))
+
+    hots = sorted([c for c in ranked if c.is_hot], key=sort_key)
+    normals = sorted([c for c in ranked if not c.is_hot], key=sort_key)
+    return hots + normals
 
 
 def list_faq_suggestions(
@@ -68,21 +91,28 @@ def list_faq_suggestions(
     ranked = list_faq_candidates(db, tenant_id=tenant_id)
     if not ranked:
         return []
-    n = len(ranked)
-    start = offset % n
-    window: list[tuple[Document, int]] = []
-    for i in range(min(FAQ_PAGE_SIZE, n)):
-        window.append(ranked[(start + i) % n])
+
+    hots = [c for c in ranked if c.is_hot]
+    normals = [c for c in ranked if not c.is_hot]
+    normals_page = max(0, FAQ_PAGE_SIZE - len(hots))
+
+    window: list[_Candidate] = list(hots)
+    if normals and normals_page > 0:
+        n = len(normals)
+        start = offset % n
+        for i in range(min(normals_page, n)):
+            window.append(normals[(start + i) % n])
+
     items: list[FaqSuggestionItem] = []
-    for idx, (doc, click_count) in enumerate(window):
-        question = (doc.doc_name or "").strip() or "未命名问题"
+    for c in window:
+        question = (c.doc.doc_name or "").strip() or "未命名问题"
         items.append(
             FaqSuggestionItem(
-                document_group_id=doc.doc_group_id,
-                document_id=doc.doc_id,
+                document_group_id=c.doc.doc_group_id,
+                document_id=c.doc.doc_id,
                 question=question,
-                click_count=click_count,
-                hot=idx == 0,
+                click_count=c.click_count,
+                hot=c.is_hot,
             )
         )
     return items
@@ -96,10 +126,10 @@ def click_faq_suggestion(
 ) -> FaqSuggestionItem:
     """Increment click count for an FAQ doc group; 404 if not a candidate."""
     ranked = list_faq_candidates(db, tenant_id=tenant_id)
-    match = next((item for item in ranked if item[0].doc_group_id == document_group_id), None)
+    match = next((c for c in ranked if c.doc.doc_group_id == document_group_id), None)
     if match is None:
         raise HTTPException(status_code=404, detail="FAQ suggestion not found")
-    doc, _ = match
+    doc = match.doc
     stats = db.scalar(
         select(FaqSuggestionStats).where(
             FaqSuggestionStats.tenant_id == tenant_id,
@@ -111,6 +141,7 @@ def click_faq_suggestion(
             tenant_id=tenant_id,
             document_group_id=document_group_id,
             click_count=0,
+            is_hot=False,
         )
         db.add(stats)
         db.flush()
@@ -123,5 +154,5 @@ def click_faq_suggestion(
         document_id=doc.doc_id,
         question=question,
         click_count=stats.click_count,
-        hot=False,
+        hot=bool(stats.is_hot),
     )

@@ -71,10 +71,17 @@ export function ChatWorkspace() {
       try {
         const items = await refreshList(statusFilter);
         if (cancelled) return;
-        if (selectedId && !items.some((c) => c.id === selectedId)) {
-          setSelectedId(null);
-          setMessages([]);
-        }
+        setSelectedId((current) => {
+          if (
+            current &&
+            !current.startsWith("temp-conv-") &&
+            !items.some((c) => c.id === current)
+          ) {
+            setMessages([]);
+            return null;
+          }
+          return current;
+        });
       } catch (e) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : "加载失败");
@@ -84,7 +91,7 @@ export function ChatWorkspace() {
     return () => {
       cancelled = true;
     };
-  }, [statusFilter, refreshList, selectedId]);
+  }, [statusFilter, refreshList]);
 
   useEffect(() => {
     if (!isDraft) return;
@@ -180,9 +187,33 @@ export function ChatWorkspace() {
     setError(null);
     const t0 = performance.now();
     const nowIso = new Date().toISOString();
+    const fromDraft = selectedId === null;
+    const tempConvId = fromDraft ? newTempId("temp-conv") : null;
     const tempUserId = newTempId("temp-user");
     const tempAssistantId = newTempId("temp-assistant");
-    const convIdForOptimistic = selectedId ?? "draft";
+    const convIdForOptimistic = tempConvId ?? selectedId ?? "draft";
+    const titlePreview =
+      content.length > 40 ? `${content.slice(0, 40)}…` : content;
+
+    // Leave homepage immediately (Cursor-style): show chat view + sidebar stub.
+    if (tempConvId) {
+      const optimisticConv: Conversation = {
+        id: tempConvId,
+        tenant_id: selected?.tenant_id ?? "",
+        user_id: "",
+        title: titlePreview || "新对话",
+        status: "active",
+        create_at: nowIso,
+        update_at: nowIso,
+      };
+      setStatusFilter("active");
+      setConversations((prev) => [
+        optimisticConv,
+        ...prev.filter((c) => c.id !== tempConvId),
+      ]);
+      setSelectedId(tempConvId);
+    }
+
     const tempUser: Message = {
       id: tempUserId,
       conversation_id: convIdForOptimistic,
@@ -205,14 +236,31 @@ export function ChatWorkspace() {
       meta: null,
       agent_run_id: null,
     };
-    setMessages((prev) => [...prev, tempUser, tempAssistant]);
+    setMessages((prev) =>
+      fromDraft ? [tempUser, tempAssistant] : [...prev, tempUser, tempAssistant],
+    );
 
-    let activeId = selectedId;
+    let activeId = fromDraft ? null : selectedId;
     try {
-      const turn = await postMessageStream(selectedId, content, {
+      // Always create on server when leaving draft (do not send temp client id).
+      const turn = await postMessageStream(fromDraft ? null : selectedId, content, {
         onStarted: (conversationId) => {
           activeId = conversationId;
           setSelectedId(conversationId);
+          if (tempConvId) {
+            setConversations((prev) =>
+              prev.map((c) =>
+                c.id === tempConvId ? { ...c, id: conversationId } : c,
+              ),
+            );
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.conversation_id === tempConvId
+                  ? { ...m, conversation_id: conversationId }
+                  : m,
+              ),
+            );
+          }
         },
         onProgress: (_stage, elapsedMs) => {
           setMessages((prev) =>
@@ -255,6 +303,10 @@ export function ChatWorkspace() {
       setMessages((prev) =>
         prev.filter((m) => m.id !== tempAssistantId && m.id !== tempUserId),
       );
+      if (tempConvId) {
+        setConversations((prev) => prev.filter((c) => c.id !== tempConvId));
+        setSelectedId(null);
+      }
       setError(e instanceof Error ? e.message : "发送失败");
       throw e;
     }
@@ -264,9 +316,9 @@ export function ChatWorkspace() {
     setBusy(true);
     setError(null);
     try {
-      const clicked = await clickFaqSuggestion(item.document_group_id);
-      await handleSend(clicked.question);
-      await refreshFaq(faqOffset);
+      // Heat count is best-effort; do not block leaving the homepage.
+      void clickFaqSuggestion(item.document_group_id).catch(() => {});
+      await handleSend(item.question);
     } catch (e) {
       setError(e instanceof Error ? e.message : "FAQ 发送失败");
     } finally {
@@ -347,16 +399,22 @@ export function ChatWorkspace() {
         {isDraft ? (
           <div className="draft-home" data-testid="draft-home">
             <DraftHero />
-            <Composer
-              disabled={!canCompose}
-              placeholder="Assign a task or ask any question."
-              onSend={handleSend}
-            />
             <FaqSuggestions
               items={faqItems}
               busy={busy}
               onSelect={(item) => void handleFaqSelect(item)}
-              onRefresh={() => setFaqOffset((o) => o + 5)}
+              onRefresh={() => {
+                const step = Math.max(
+                  1,
+                  faqItems.filter((item) => !item.hot).length,
+                );
+                setFaqOffset((o) => o + step);
+              }}
+            />
+            <Composer
+              disabled={!canCompose}
+              placeholder="Assign a task or ask any question."
+              onSend={handleSend}
             />
           </div>
         ) : (

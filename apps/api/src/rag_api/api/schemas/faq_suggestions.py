@@ -20,3 +20,4 @@ class FaqClickOut(BaseModel):
     document_id: UUID
     question: str
     click_count: int
+    hot: bool

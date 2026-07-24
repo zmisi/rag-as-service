@@ -54,9 +54,12 @@ export function Composer({
     const content = text.trim();
     if (!content || disabled || sending) return;
     setSending(true);
+    setText("");
     try {
       await onSend(content);
-      setText("");
+    } catch {
+      // Parent surfaces error; restore draft text so user can retry.
+      setText(content);
     } finally {
       setSending(false);
     }

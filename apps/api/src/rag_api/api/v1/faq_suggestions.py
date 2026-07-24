@@ -47,4 +47,5 @@ def click_faq_suggestion(
         document_id=item.document_id,
         question=item.question,
         click_count=item.click_count,
+        hot=item.hot,
     )
