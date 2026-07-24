@@ -21,7 +21,7 @@ flowchart LR
 | P3-WeChat | 微信登录 | 3 | 扫码/OAuth；Phase 1/2 不做验收 |
 | P3-SOP-Gate | SOP 强制验证门禁 | 3 | SOP tag 须内容校验通过才能 publish |
 | P3-OCR | OCR / 扫描件 | 3+ | Phase 1 `do_ocr=false` |
-| P3-HeadingDepth | 任意深标题树 | 3+ | Phase 1 仅 H1/H2 |
+| P3-HeadingDepth | 超过 H6 的无限深标题树 | 3+ | 当前索引上限 H1–H6 |
 
 ## 阅读顺序
 

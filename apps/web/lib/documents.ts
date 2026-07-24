@@ -77,17 +77,24 @@ export const STATUS_LABELS: Record<DocStatus, string> = {
   published: "已发布",
 };
 
-export const ALLOWED_EXTENSIONS = [".txt", ".md", ".pdf", ".docx", ".pptx"] as const;
+export const ALLOWED_EXTENSIONS = [
+  ".txt",
+  ".md",
+  ".pdf",
+  ".docx",
+  ".pptx",
+  ".xlsx",
+] as const;
 
-export const LEGACY_EXTENSIONS = [".doc", ".ppt"] as const;
+export const LEGACY_EXTENSIONS = [".doc", ".ppt", ".xls"] as const;
 
 export const MAX_FILE_BYTES = 20 * 1024 * 1024;
 
 export const LEGACY_FILE_TYPE_MESSAGE =
-  "不支持旧版 .doc / .ppt，请另存为 .docx / .pptx 后再上传";
+  "不支持旧版 .doc / .ppt / .xls，请另存为 .docx / .pptx / .xlsx 后再上传";
 
 export const UNSUPPORTED_FILE_TYPE_MESSAGE =
-  "不支持的文件类型，仅允许 .txt / .md / .pdf / .docx / .pptx";
+  "不支持的文件类型，仅允许 .txt / .md / .pdf / .docx / .pptx / .xlsx";
 
 export function tagLabel(tag: string): string {
   return TAG_OPTIONS.find((o) => o.value === tag)?.label ?? tag;
@@ -99,7 +106,13 @@ export function formatVersionDisplay(version: number): string {
 
 export function isLegacyFile(name: string): boolean {
   const lower = name.toLowerCase();
-  if (lower.endsWith(".docx") || lower.endsWith(".pptx")) return false;
+  if (
+    lower.endsWith(".docx") ||
+    lower.endsWith(".pptx") ||
+    lower.endsWith(".xlsx")
+  ) {
+    return false;
+  }
   return LEGACY_EXTENSIONS.some((ext) => lower.endsWith(ext));
 }
 

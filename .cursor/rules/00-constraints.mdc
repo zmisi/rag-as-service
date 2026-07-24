@@ -122,7 +122,7 @@ alwaysApply: true
 
 ### Phase 3 预留
 
-- 微信登录、SOP 强制验证门禁；OCR / 任意深标题树等增强
+- 微信登录、SOP 强制验证门禁；OCR / 超过 H6 的无限深标题树等增强
 
 ## 8. Feature 状态（实现门禁）
 

@@ -181,7 +181,7 @@ erDiagram
 | 知识库 | `documents` | F03 + F04 + F07 + F08 | 文档**版本行**（`doc_id`=版本 PK；`doc_group_id` 逻辑组；双状态；`version_number`） |
 | | `document_files` | F03 | 源文件对象（FK → 版本行 `doc_id`） |
 | 索引 | `index_jobs` | F04 | 索引任务队列（FK → 版本行 `doc_id`） |
-| | `document_sections` | F04 | H1/H2 节（全文 + path；供检索返回） |
+| | `document_sections` | F04 | H1–H6 节（全文 + path；供检索返回） |
 | | `document_chunks` | F04 + F08 | 节内 leaf + embedding（`chunk_id` / `doc_id`） |
 | 数据模型 | （上表） | F07 / F08 | F07 版本行语义；F08 显式列命名与身份字段 |
 | 对话 | `conversations` | F05 | 聊天会话 |
@@ -357,7 +357,7 @@ erDiagram
 
 ---
 
-### 4.8 `document_sections` — 文档节（H1/H2）
+### 4.8 `document_sections` — 文档节（H1–H6）
 
 **表注释**：层级节节点；版本由 `doc_id` 表达；新版本/软删后旧节 `is_latest=false`。
 
@@ -366,8 +366,8 @@ erDiagram
 | `id` | `uuid` | PK | 节主键 |
 | `tenant_id` | `uuid` | NOT NULL FK → `tenants.tenant_id` | 所属租户 |
 | `doc_id` | `uuid` | NOT NULL FK → `documents.doc_id` | 来源**版本行**（`ON DELETE CASCADE`） |
-| `parent_id` | `uuid` | NULL FK → `document_sections.id` | H2 指向所属 H1 |
-| `level` | `text` | NOT NULL | `'1'`=H1，`'2'`=H2 |
+| `parent_id` | `uuid` | NULL FK → `document_sections.id` | 指向路径上更浅父节 |
+| `level` | `text` | NOT NULL | `'1'`…`'6'`（H1–H6） |
 | `title` | `text` | NOT NULL | 节标题 |
 | `path` | `text` | NOT NULL | 展示路径 |
 | `content` | `text` | NOT NULL | **节全文** |

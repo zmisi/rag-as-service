@@ -5,7 +5,7 @@ Phase 索引见 [../01-phase-list.md](../01-phase-list.md)。
 
 | ID | 名称 | Status | 域名表面 | 依赖 | Spec |
 |----|------|--------|----------|------|------|
-| F08 | Office OOXML（docx/xlsx/pptx） | `draft` | `/admin` + 索引 | F03, F04 | [F08-office-ooxml.md](features/F08-office-ooxml.md) |
+| F08 | Office OOXML（docx/xlsx/pptx） | `done` | `/admin` + 索引 | F03, F04 | [F08-office-ooxml.md](features/F08-office-ooxml.md) |
 | F09 | Admin 文件夹树 | `draft` | `{subdomain}.lxzxai.com/admin` | F03 | [F09-admin-folder-tree.md](features/F09-admin-folder-tree.md) |
 | F10 | 文档预览 | `draft` | `{subdomain}.lxzxai.com/admin` | F03, F08 | [F10-doc-preview.md](features/F10-doc-preview.md) |
 | F11 | 租户对外 API | `draft` | `{subdomain}.lxzxai.com/api` | F04, F06 | [F11-tenant-public-api.md](features/F11-tenant-public-api.md) |

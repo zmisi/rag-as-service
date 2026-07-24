@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 
 class DocumentSection(TimestampMixin, Base):
-    """H1/H2 section with full text + path (F04 / F07)."""
+    """H1–H6 section with full text + path (F04 / F07)."""
 
     __tablename__ = "document_sections"
 

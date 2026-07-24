@@ -15,20 +15,25 @@ INDEX_STATUSES = frozenset({"pending", "processing", "ready", "failed"})
 
 CHUNK_TYPES = frozenset({"text", "table", "mixed"})
 
-# Phase 1: OOXML only for Word/PPT; .md as plain text. Legacy .doc / .ppt are rejected.
-ALLOWED_EXTENSIONS = frozenset({".txt", ".md", ".pdf", ".docx", ".pptx"})
+# F08: text/PDF + OOXML. Legacy binary Office rejected.
+ALLOWED_EXTENSIONS = frozenset({".txt", ".md", ".pdf", ".docx", ".pptx", ".xlsx"})
 
-LEGACY_EXTENSIONS = frozenset({".doc", ".ppt"})
+LEGACY_EXTENSIONS = frozenset({".doc", ".ppt", ".xls"})
 
 MAX_FILE_BYTES = 20 * 1024 * 1024
 
 UNSUPPORTED_FILE_TYPE_MESSAGE = (
-    "Unsupported file type. Allowed: .txt, .md, .pdf, .docx, .pptx"
+    "Unsupported file type. Allowed: .txt, .md, .pdf, .docx, .pptx, .xlsx"
 )
 
 LEGACY_FILE_TYPE_MESSAGE = (
-    "Legacy .doc / .ppt are not supported. "
-    "Please re-save as .docx / .pptx and upload again."
+    "Legacy .doc / .ppt / .xls are not supported. "
+    "Please re-save as .docx / .pptx / .xlsx and upload again."
+)
+
+FILE_TYPE_MISMATCH_MESSAGE = (
+    "File content does not match the declared extension "
+    "(magic-byte check failed)."
 )
 
 # Same-tenant content hash skip (publish / index worker).
@@ -60,9 +65,9 @@ def is_allowed_extension(filename: str) -> bool:
 
 
 def is_legacy_extension(filename: str) -> bool:
-    """True for .doc / .ppt only (not .docx / .pptx)."""
+    """True for .doc / .ppt / .xls only (not .docx / .pptx / .xlsx)."""
     lower = filename.lower()
-    if lower.endswith(".docx") or lower.endswith(".pptx"):
+    if lower.endswith((".docx", ".pptx", ".xlsx")):
         return False
     return _matched_extension(filename, LEGACY_EXTENSIONS) is not None
 
@@ -71,6 +76,10 @@ def file_type_reject_message(filename: str) -> str:
     if is_legacy_extension(filename):
         return LEGACY_FILE_TYPE_MESSAGE
     return UNSUPPORTED_FILE_TYPE_MESSAGE
+
+
+def matched_allowed_extension(filename: str) -> str | None:
+    return _matched_extension(filename, ALLOWED_EXTENSIONS)
 
 
 def next_version(current: int | None) -> int:
