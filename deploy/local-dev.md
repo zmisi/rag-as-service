@@ -45,9 +45,9 @@ docker compose -f deploy/docker-compose.yml build \
   --build-arg INSTALL_DOCLING=1 \
   --build-arg PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
   --build-arg PIP_TRUSTED_HOST=pypi.tuna.tsinghua.edu.cn \
-  api
+  api 
 
-docker compose -f deploy/docker-compose.yml up -d --force-recreate api web
+docker compose -f deploy/docker-compose.yml up -d --force-recreate api web index_worker 
 
 # 查看详细日志
 # 只看 API（索引 / parse_route / 报错最常用）
@@ -106,15 +106,20 @@ docker compose -f deploy/docker-compose.yml up -d --force-recreate api
 docker compose -f deploy/docker-compose.yml up -d web
 
 # 一次重建 api + 启动 web
-docker compose -f deploy/docker-compose.yml up -d --force-recreate api web
+docker compose -f deploy/docker-compose.yml up -d --force-recreate api web index-worker
 
-# 手动调用 run-pending
+# 手动调用 run-pending（仅当前租户；生产由 index-worker 消费）
 curl -X POST 'http://127.0.0.1:8000/v1/documents/index/run-pending' \
   -H 'Host: opc15.lxzxai.com' \
   -H 'Content-Type: application/json' \
   -b 'pb_session=eBFP3lHKDLheVtMOyPglWJUL36vNXJQhPXy17ktgkNw'
+```
 
+可选边缘入口（Caddy，可信 Host / XFH）：
 
+```bash
+docker compose -f deploy/docker-compose.yml --profile caddy up -d
+# 访问 http://lxzxai.com:8080 （/backend → api，其余 → web）
 ```
 
 确认迁移已到最新：
@@ -130,15 +135,23 @@ docker compose -f deploy/docker-compose.yml logs api --tail 40
 ## 原生进程（不用 Docker）
 
 ```bash
-# 终端 1 — API
+# 终端 1 — API（与 Web 共用 PROXY_SHARED_SECRET）
 cd apps/api && source .venv/bin/activate
+export PROXY_SHARED_SECRET=local-dev-proxy-secret
 uvicorn rag_api.main:app --reload --port 8000
 
-# 终端 2 — Web
-cd apps/web && npm run dev
+# 终端 2 — Index worker
+cd apps/api && source .venv/bin/activate
+rag-index-worker
+
+# 终端 3 — Web
+cd apps/web && \
+  PROXY_SHARED_SECRET=local-dev-proxy-secret \
+  API_BACKEND_URL=http://localhost:8000 \
+  npm run dev
 ```
 
-访问：http://lxzxai.com:3000/login 或 `/register`（`localhost` 仅可看 UI；鉴权 API 需 `Host: lxzxai.com` 或 `{subdomain}.lxzxai.com`）。
+访问：http://lxzxai.com:3000/login 或 `/register`（`localhost` 仅可看 UI；鉴权走 `/backend` BFF，由服务端注入 `X-Forwarded-Host`）。
 
 **Docker 含 PDF/Office 解析**（安装 CPU 版 torch，避免拉 CUDA 大包超时）：
 
@@ -170,13 +183,14 @@ docker compose -f deploy/docker-compose.yml build \
 - `.pdf`：**PyMuPDF fast path**（默认依赖，轻量）→ 质量门限不达标时再 **Docling fallback**
 - `.docx` / `.xlsx` / `.pptx`：轻量库（`python-docx` / `openpyxl` / `python-pptx`），**不用 Docling**
 - 首次走 Docling（结构化 PDF）时会从 Hugging Face 拉模型，发布接口可能较慢；模型缓存后会明显加快
-- `INDEX_SYNC_ON_PUBLISH=true` 时发布会同步跑完索引；Docling 首次下载可能导致代理超时，可稍后看 `index-status` 或重试发布
+- `INDEX_SYNC_ON_PUBLISH=true` 时发布会同步跑完索引（本地捷径）；Compose 默认 `false`，由 `index-worker`（`rag-index-worker`）轮询消费 `index_job`（`FOR UPDATE SKIP LOCKED` + stuck reclaim）
+- 浏览器**不要**自带 `X-Forwarded-Host`；由 Next `/backend` BFF 或 Caddy 注入，并带 `X-Rag-Proxy-Secret`
 
 E2E：`E2E_ENABLED=1` + `DATABASE_URL` 后 `cd apps/web && npm run test:e2e`。
 
 ## F04 / F07 / F08 文档索引与数据模型（本地）
 
-发布 `published` 文档后会写入 `index_job`；默认 `INDEX_SYNC_ON_PUBLISH=true` 会在发布 API 内联跑完索引。文档行是**版本行**（`document_group_id` + int `version`）；检索门禁为 `publish_status=published` 且 `index_status=ready` 且 section/chunk `is_latest=true`。
+发布 `published` 文档后会写入 `index_job`；Compose 默认由 **`index-worker`** 异步消费（`INDEX_SYNC_ON_PUBLISH=false`）。文档行是**版本行**（`document_group_id` + int `version`）；检索门禁为 `publish_status=published` 且 `index_status=ready` 且 section/chunk `is_latest=true`。
 
 | 能力 | 说明 |
 |------|------|
@@ -187,7 +201,7 @@ E2E：`E2E_ENABLED=1` + `DATABASE_URL` 后 `cd apps/web && npm run test:e2e`。
 | Embedding | 默认 `HashingEmbedder`（本地无 DashScope）；生产可设 `QWEN_EMBEDDING_ENABLED=true`；审计字段写在 **documents** |
 | PDF 路由 | **有骨架**（书签 TOC / 字号标题候选，或 `PDF_FORCE_STRUCTURE=true`）→ Docling 结构路径；**无骨架纯文字** → PyMuPDF；结构 PDF 需 `INSTALL_DOCLING=1` |
 | 源文件持久化 | Compose 卷 `api_storage` → `/app/var/storage` |
-| 同租户去重 | 相同 `content_sha256` 且已有 `ready` latest → 跳过冗余索引 |
+| 同租户去重 | 相同 `content_sha256` 且已有 `ready` latest → 跳过 parse/embedding，**克隆** section/chunk 到本 `doc_id`（可检索） |
 
 **迁移 / 重建索引：**
 

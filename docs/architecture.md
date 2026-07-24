@@ -31,10 +31,12 @@ rag-as-service/
 浏览器
   │  Host: lxzxai.com | {subdomain}.lxzxai.com
   ▼
-反代 / Next
+Caddy（可选）或 Next BFF
   ├─ /*           → apps/web
-  └─ /backend/*   → apps/api   （同源，保证 Cookie Domain=.lxzxai.com）
+  └─ /backend/*   → apps/api   （同源；服务端注入 X-Forwarded-Host + X-Rag-Proxy-Secret）
 ```
+
+浏览器**不得**自设 `X-Forwarded-Host`；API 仅在校验 `PROXY_SHARED_SECRET` 后信任该头。
 
 | 表面 | 用途 |
 |------|------|
@@ -50,8 +52,8 @@ rag-as-service/
 | 进程 | 职责 |
 |------|------|
 | `api`（uvicorn） | HTTP；publish 入队 `index_job`；提供 F04 内部 `search`（供 F06） |
-| `worker`（同包异进程） | 消费 `index_job`：解析 / 节树 / leaf embedding / 写 pgvector |
-| `web`（next） | UI；经 `/backend` 调 API |
+| `index-worker`（`rag-index-worker`） | `FOR UPDATE SKIP LOCKED` 消费 `index_job`；stuck reclaim |
+| `web`（next） | UI；经 `/backend` BFF 调 API |
 
 对象存储：本地 `apps/api/var/storage/`（gitignore），路径由配置注入。
 
@@ -68,7 +70,7 @@ apps/api/
 │   └── rules/               # 「只依据检索结果作答」等规则片段
 ├── src/rag_api/
 │   ├── main.py              # ASGI 入口
-│   ├── worker.py            # index_job 消费入口
+│   ├── indexing/worker_main.py  # rag-index-worker 入口
 │   ├── config/              # settings（Pydantic Settings）
 │   ├── core/                # security、context、exceptions、handlers
 │   ├── domain/              # 无 IO 规则（tenancy、identity 等）

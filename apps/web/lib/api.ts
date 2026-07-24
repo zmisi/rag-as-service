@@ -125,9 +125,6 @@ function authHeaders(): HeadersInit {
   if (userId) {
     headers["X-Test-User-Id"] = userId;
   }
-  if (typeof window !== "undefined") {
-    headers["X-Forwarded-Host"] = window.location.host;
-  }
   return headers;
 }
 
@@ -350,9 +347,6 @@ function parseSse(raw: string): StreamEvent | null {
 
 function tenantHeaders(extra?: HeadersInit): HeadersInit {
   const headers: Record<string, string> = {};
-  if (typeof window !== "undefined") {
-    headers["X-Forwarded-Host"] = window.location.host;
-  }
   const userId = process.env.NEXT_PUBLIC_DEV_USER_ID;
   if (userId) {
     headers["X-Test-User-Id"] = userId;

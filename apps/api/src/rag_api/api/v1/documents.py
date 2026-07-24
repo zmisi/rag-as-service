@@ -54,12 +54,11 @@ def run_pending_index_jobs(
     db: Session = Depends(get_db),
     auth: AuthContext = Depends(require_tenant_member),
 ) -> list[IndexJobOut]:
-    """Drain pending index_jobs for local e2e."""
+    """Drain pending index_jobs for this tenant only (dev/ops helper)."""
     from rag_api.indexing.worker import process_pending_jobs
 
-    jobs = process_pending_jobs(db, limit=50)
-    owned = [j for j in jobs if j.tenant_id == auth.tenant_id]
-    return [IndexJobOut.model_validate(j) for j in owned]
+    jobs = process_pending_jobs(db, limit=50, tenant_id=auth.tenant_id)
+    return [index_job_to_out(j) for j in jobs]
 
 
 @router.get("/{document_id}", response_model=DocumentDetailOut)

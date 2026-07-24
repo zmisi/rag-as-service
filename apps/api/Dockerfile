@@ -35,8 +35,12 @@ ENV PIP_DEFAULT_TIMEOUT=1000 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_RETRIES=10
 
-# Install with retries. Docling path: base deps from PyPI/mirror, then CPU torch
-# from pytorch.org alone (avoid --extra-index-url hash mismatches), then docling.
+# Install with retries. Docling path:
+# 1) base app from PyPI/mirror
+# 2) torch/torchvision from pytorch.org with --no-deps (their CPU index often
+#    serves dependency wheels whose hashes disagree with pip's expectations)
+# 3) torch deps + docling from the mirror; pin torch so pip won't replace it
+# 4) re-assert CPU torch wheels last
 RUN set -eux; \
     PIP_OPTS="--no-cache-dir --default-timeout=1000 --retries 10"; \
     if [ -n "$PIP_INDEX_URL" ]; then \
@@ -61,11 +65,14 @@ RUN set -eux; \
       pip_retry -e .; \
       pip install --no-cache-dir --default-timeout=1000 --retries 10 \
         --index-url https://download.pytorch.org/whl/cpu \
+        --no-deps \
         torch torchvision; \
+      # Minimal runtime deps for the CPU wheels (from mirror / PyPI, not pytorch index).
+      pip_retry typing-extensions sympy networkx jinja2 markupsafe mpmath pillow numpy; \
       pip_retry "docling>=2.0.0"; \
-      # Ensure CPU wheels win if docling pulled a different torch from PyPI. \
       pip install --no-cache-dir --default-timeout=1000 --retries 10 \
-        --force-reinstall --index-url https://download.pytorch.org/whl/cpu \
+        --force-reinstall --no-deps \
+        --index-url https://download.pytorch.org/whl/cpu \
         torch torchvision; \
     else \
       pip_retry -e .; \

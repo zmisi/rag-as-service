@@ -32,6 +32,7 @@ docling = [
 
 [project.scripts]
 rag-api = "rag_api.main:run"
+rag-index-worker = "rag_api.indexing.worker_main:run"
 
 [build-system]
 requires = ["hatchling"]

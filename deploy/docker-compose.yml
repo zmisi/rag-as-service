@@ -1,4 +1,4 @@
-# Local dev stack: PostgreSQL + API + Web
+# Local dev stack: PostgreSQL + API + index worker + Web (+ optional Caddy)
 # Usage (from repo root):
 #   cp deploy/.env.example .env
 #   docker compose -f deploy/docker-compose.yml up --build
@@ -51,9 +51,12 @@ services:
       API_HOST: 0.0.0.0
       API_PORT: 8000
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      PROXY_SHARED_SECRET: ${PROXY_SHARED_SECRET:-local-dev-proxy-secret}
       # Prefer values from env_file (../.env). Do not set QWEN_API_KEY here
       # with ${QWEN_API_KEY:-} — empty interpolation would override env_file.
+      # Dedicated worker consumes index_jobs; keep sync off in compose.
       INDEX_SYNC_ON_PUBLISH: ${INDEX_SYNC_ON_PUBLISH:-false}
+      INDEX_JOB_STUCK_AFTER_SECONDS: ${INDEX_JOB_STUCK_AFTER_SECONDS:-1800}
     ports:
       - "${API_PORT:-8000}:8000"
     volumes:
@@ -67,6 +70,42 @@ services:
         condition: service_healthy
     command: uvicorn rag_api.main:app --reload --host 0.0.0.0 --port 8000
 
+  index-worker:
+    build:
+      context: ../apps/api
+      dockerfile: Dockerfile
+      args:
+        INSTALL_DOCLING: ${INSTALL_DOCLING:-0}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
+        PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-pypi.tuna.tsinghua.edu.cn}
+    restart: unless-stopped
+    env_file:
+      - path: ../.env
+        required: false
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-rag_app}:${POSTGRES_PASSWORD:-rag_app}@db:5432/${POSTGRES_DB:-lxzxai_rag}
+      AUTO_MIGRATE: "false"
+      SECRET_KEY: ${SECRET_KEY:-change_me}
+      INDEX_SYNC_ON_PUBLISH: "false"
+      INDEX_WORKER_POLL_INTERVAL_SECONDS: ${INDEX_WORKER_POLL_INTERVAL_SECONDS:-2}
+      INDEX_WORKER_BATCH_SIZE: ${INDEX_WORKER_BATCH_SIZE:-5}
+      INDEX_JOB_STUCK_AFTER_SECONDS: ${INDEX_JOB_STUCK_AFTER_SECONDS:-1800}
+      QWEN_EMBEDDING_ENABLED: ${QWEN_EMBEDDING_ENABLED:-false}
+      QWEN_EMBEDDING_MODEL: ${QWEN_EMBEDDING_MODEL:-text-embedding-v4}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-1024}
+      CHUNK_TARGET_TOKENS: ${CHUNK_TARGET_TOKENS:-800}
+      CHUNK_OVERLAP_TOKENS: ${CHUNK_OVERLAP_TOKENS:-100}
+    volumes:
+      - ../apps/api/src:/app/src
+      - ../apps/api/pyproject.toml:/app/pyproject.toml
+      - api_storage:/app/var/storage
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_started
+    command: rag-index-worker
+
   web:
     build:
       context: ../apps/web
@@ -74,6 +113,7 @@ services:
     restart: unless-stopped
     environment:
       API_BACKEND_URL: http://api:8000
+      PROXY_SHARED_SECRET: ${PROXY_SHARED_SECRET:-local-dev-proxy-secret}
       WEB_PORT: 3000
     ports:
       - "${WEB_PORT:-3000}:3000"
@@ -82,6 +122,21 @@ services:
       - web_node_modules:/app/node_modules
     depends_on:
       - api
+
+  # Optional edge entry on :8080 (trusted Host / XFH). Profile: caddy
+  caddy:
+    image: caddy:2.8-alpine
+    profiles: ["caddy"]
+    restart: unless-stopped
+    ports:
+      - "${CADDY_PORT:-8080}:8080"
+    environment:
+      PROXY_SHARED_SECRET: ${PROXY_SHARED_SECRET:-local-dev-proxy-secret}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - api
+      - web
 
 volumes:
   pgdata:

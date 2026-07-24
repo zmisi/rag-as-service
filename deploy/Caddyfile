@@ -1,0 +1,31 @@
+# Local edge entry (optional). Browser → Caddy :8080 → web / api.
+# Usage:
+#   docker compose -f deploy/docker-compose.yml up --build
+#   # then open http://lxzxai.com:8080 (add /etc/hosts → 127.0.0.1 lxzxai.com *.lxzxai.com)
+#
+# Caddy strips client X-Forwarded-Host and sets trusted hop headers for the API.
+
+{
+	auto_https off
+}
+
+:8080 {
+	# API via /backend/* (same-origin for browser cookies)
+	handle_path /backend/* {
+		reverse_proxy api:8000 {
+			header_up Host {host}
+			header_up X-Forwarded-Host {host}
+			header_up X-Rag-Proxy-Secret {$PROXY_SHARED_SECRET}
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+
+	# Everything else → Next.js
+	handle {
+		reverse_proxy web:3000 {
+			header_up Host {host}
+			header_up X-Forwarded-Host {host}
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+}

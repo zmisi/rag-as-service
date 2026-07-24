@@ -205,6 +205,45 @@ EXPLAIN body
     assert "PARTIAL_ONLY" not in btree.content
 
 
+def test_f04_t24_docling_flat_h2_chapter_promoted() -> None:
+    """F04-T24: Docling-flat ## 第二章 still wins over synthetic # 2."""
+    md = """## 《 PostgreSQL 性能调优实战指南》
+
+## 第二章 索引优化策略
+
+## 2.1 索引类型与选择
+
+## 2.1.1 B-Tree 索引适用场景
+
+BTREE_ONLY body
+
+## 2.1.2 部分索引（Partial Index）的使用
+
+PARTIAL_ONLY body
+
+## 2.2 执行计划与统计信息
+
+## 2.2.1 解读EXPLAIN ANALYZE
+
+EXPLAIN body
+
+## 2.2.2 自动分析（AutoVacuum）调优
+
+VACUUM body
+"""
+    out = normalize_numbered_outline(md)
+    assert any(line.strip() == "# 第二章 索引优化策略" for line in out.splitlines())
+    assert not any(line.strip() == "# 2" for line in out.splitlines())
+
+    drafts = build_section_tree(md, title_fallback="PostgreSQL性能优化实战")
+    assert drafts
+    assert all(d.path.startswith("第二章 索引优化策略") for d in drafts)
+    assert not any(d.path.startswith("2 >") for d in drafts)
+    btree = next(d for d in drafts if "2.1.1" in d.path)
+    assert "BTREE_ONLY" in btree.content
+    assert btree.path.startswith("第二章 索引优化策略 > 2.1")
+
+
 def test_drafts_emitted_shallow_first() -> None:
     md = """# A
 
