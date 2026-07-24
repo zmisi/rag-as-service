@@ -17,11 +17,11 @@ class Conversation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "conversations"
 
     tenant_id: Mapped[UUID] = mapped_column(
-        ForeignKey(f"{RAG_SCHEMA}.tenants.id", ondelete="CASCADE"),
+        ForeignKey(f"{RAG_SCHEMA}.tenants.tenant_id", ondelete="CASCADE"),
         nullable=False,
     )
     user_id: Mapped[UUID] = mapped_column(
-        ForeignKey(f"{RAG_SCHEMA}.users.id", ondelete="CASCADE"),
+        ForeignKey(f"{RAG_SCHEMA}.users.user_id", ondelete="CASCADE"),
         nullable=False,
     )
     title: Mapped[str] = mapped_column(Text, nullable=False, default="新会话")

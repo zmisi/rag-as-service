@@ -2,39 +2,55 @@ import re
 
 from rag_api.domain.errors import SubdomainValidationError
 
-RESERVED_SUBDOMAINS = frozenset(
+RESERVED_TENANT_NAMES = frozenset(
     {"www", "admin", "api", "app", "mail", "static", "cdn", "lxzxai"}
 )
-SUBDOMAIN_MIN_LENGTH = 3
-SUBDOMAIN_MAX_LENGTH = 32
-_SUBDOMAIN_PATTERN = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
+# Deprecated alias
+RESERVED_SUBDOMAINS = RESERVED_TENANT_NAMES
+
+TENANT_NAME_MIN_LENGTH = 3
+TENANT_NAME_MAX_LENGTH = 32
+SUBDOMAIN_MIN_LENGTH = TENANT_NAME_MIN_LENGTH
+SUBDOMAIN_MAX_LENGTH = TENANT_NAME_MAX_LENGTH
+
+_TENANT_NAME_PATTERN = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
+_SUBDOMAIN_PATTERN = _TENANT_NAME_PATTERN
 
 
-def normalize_subdomain(raw: str) -> str:
+def normalize_tenant_name(raw: str) -> str:
     return raw.strip().lower()
 
 
-def validate_subdomain(raw: str) -> str:
-    """Normalize and validate subdomain; return canonical lowercase value."""
-    normalized = normalize_subdomain(raw)
+normalize_subdomain = normalize_tenant_name
 
-    if len(normalized) < SUBDOMAIN_MIN_LENGTH or len(normalized) > SUBDOMAIN_MAX_LENGTH:
+
+def validate_tenant_name(raw: str) -> str:
+    """Normalize and validate tenant_name (Host label); return canonical lowercase."""
+    normalized = normalize_tenant_name(raw)
+
+    if (
+        len(normalized) < TENANT_NAME_MIN_LENGTH
+        or len(normalized) > TENANT_NAME_MAX_LENGTH
+    ):
         raise SubdomainValidationError(
             "invalid_format",
-            "subdomain must be 3–32 characters",
+            "tenant_name must be 3–32 characters",
         )
 
-    if not _SUBDOMAIN_PATTERN.match(normalized):
+    if not _TENANT_NAME_PATTERN.match(normalized):
         raise SubdomainValidationError(
             "invalid_format",
-            "subdomain must use lowercase letters, digits, and hyphens; "
+            "tenant_name must use lowercase letters, digits, and hyphens; "
             "cannot start or end with a hyphen",
         )
 
-    if normalized in RESERVED_SUBDOMAINS:
+    if normalized in RESERVED_TENANT_NAMES:
         raise SubdomainValidationError(
             "reserved",
-            "subdomain is reserved",
+            "tenant_name is reserved",
         )
 
     return normalized
+
+
+validate_subdomain = validate_tenant_name

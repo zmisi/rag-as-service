@@ -68,6 +68,14 @@ docker compose -f deploy/docker-compose.yml up -d --force-recreate api web
 
 F02 起默认使用 cookie 会话鉴权；**无需**开启 `AUTH_STUB_ENABLED`（该开关仅作本地 UI 过渡 fallback）。
 
+**聊天 Agent（F06）**：根目录 `.env` 须配置 `QWEN_API_KEY`（及可选 `QWEN_BASE_URL` / `QWEN_MODEL`）。`api` 服务通过 `env_file: ../.env` 注入（compose 文件在 `deploy/` 下时，默认**不会**自动读仓库根 `.env` 做 `${VAR}` 替换）。改完后：
+
+```bash
+docker compose -f deploy/docker-compose.yml up -d --force-recreate api
+docker compose -f deploy/docker-compose.yml exec api env | grep QWEN_API_KEY
+# 应看到非空 Key（不要把输出贴到聊天里）
+```
+
 API 容器内 `DATABASE_URL` 指向 `db:5432`（compose 自动注入，无需手改）。
 
 开发时挂载了源码目录，改 `apps/api/src` / `apps/web` 可热更新。另有命名卷 `api_storage` 挂到 `/app/var/storage`，用于保留已上传的文档源文件；重建 `api` 镜像/容器后文件不会丢。
@@ -88,6 +96,12 @@ docker compose -f deploy/docker-compose.yml up -d web
 
 # 一次重建 api + 启动 web
 docker compose -f deploy/docker-compose.yml up -d --force-recreate api web
+
+# 手动调用 run-pending
+curl -X POST 'http://127.0.0.1:8000/v1/documents/index/run-pending' \
+  -H 'Host: opc15.lxzxai.com' \
+  -H 'Content-Type: application/json' \
+  -b 'pb_session=eBFP3lHKDLheVtMOyPglWJUL36vNXJQhPXy17ktgkNw'
 ```
 
 确认迁移已到最新：
@@ -164,11 +178,12 @@ E2E：`E2E_ENABLED=1` + `DATABASE_URL` 后 `cd apps/web && npm run test:e2e`。
 
 **迁移 / 重建索引：**
 
-1. `AUTO_MIGRATE=true`（Compose 默认）会应用至 `20260722_f07_data_model`（含 F04 sections + F07 版本行 / `is_latest` / 富 chunk）。
+1. `AUTO_MIGRATE=true`（Compose 默认）会应用至 **`20260723_f08_naming`**（F04 sections + F07 版本行 + **F08 列命名**）。
 2. **拉最新代码后须重建 `api`**（热重载不够）：见上文「常用：启停 / 迁移后重建」；若 `web` 为 Exited，再 `up -d web`。
 3. 原生进程：`cd apps/api && uv run alembic upgrade head`。
-4. F07 为破坏性迁移：升级时会清空旧 `document_sections` / `document_chunks`（需 **reindex**）。
-5. 对已 `published` 文档：重新走发布流，或确保有 pending `index_job` 后调用 `POST /v1/documents/index/run-pending`。
+4. **F08 为破坏性重命名**（`tenant_id`/`user_id`/`doc_id`/`chunk_id`，`subdomain`→`tenant_name`，`version`→`version_number` 等）。迁移失败时可重建 Postgres 卷后再 `upgrade head`。
+5. F07 升级时会清空旧 `document_sections` / `document_chunks`（需 **reindex**）。
+6. 对已 `published` 文档：重新走发布流，或确保有 pending `index_job` 后调用 `POST /v1/documents/index/run-pending`。
 
 **集成测试：**
 

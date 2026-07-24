@@ -27,16 +27,18 @@ class RegistrationRepository:
         self,
         email: str,
         password_hash: str,
-        subdomain: str,
-        display_name: str | None = None,
+        tenant_name: str,
+        user_name: str,
     ) -> RegistrationResult:
-        user = self._users.create(email=email, password_hash=password_hash)
-        tenant = self._tenants.create(
-            subdomain=subdomain,
-            display_name=display_name,
+        user = self._users.create(
+            email=email,
+            password_hash=password_hash,
+            user_name=user_name,
         )
+        tenant = self._tenants.create(tenant_name=tenant_name)
         member = self._members.create(
-            tenant_id=tenant.id,
-            user_id=user.id,
+            tenant_id=tenant.tenant_id,
+            user_id=user.user_id,
+            member_name=user.user_name,
         )
         return RegistrationResult(user=user, tenant=tenant, member=member)

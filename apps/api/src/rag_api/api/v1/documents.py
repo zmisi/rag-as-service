@@ -15,6 +15,7 @@ from rag_api.api.schemas.documents import (
     IndexJobOut,
     document_to_detail,
     document_to_summary,
+    index_job_to_out,
 )
 from rag_api.db.session import get_db
 from rag_api.services import document_service as doc_svc
@@ -137,10 +138,14 @@ def publish_document(
     db: Session = Depends(get_db),
     auth: AuthContext = Depends(require_tenant_member),
 ) -> DocumentDetailOut:
-    doc = doc_svc.publish_document(
+    result = doc_svc.publish_document(
         db, document_id=document_id, tenant_id=auth.tenant_id
     )
-    return document_to_detail(doc)
+    return document_to_detail(
+        result.document,
+        warning_code=result.warning_code,
+        warning=result.warning,
+    )
 
 
 @router.post("/{document_id}/new-version", response_model=DocumentDetailOut)
@@ -166,7 +171,7 @@ def index_status(
     )
     if job is None:
         return None
-    return IndexJobOut.model_validate(job)
+    return index_job_to_out(job)
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)

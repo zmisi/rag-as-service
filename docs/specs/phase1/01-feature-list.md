@@ -12,6 +12,7 @@ Phase 索引见 [../01-phase-list.md](../01-phase-list.md)。
 | F05 | 会话列表与归档 | `done` | `{subdomain}.lxzxai.com` | F02 | [F05-conversations.md](features/F05-conversations.md) |
 | F06 | RAG Agent | `done` | `{subdomain}.lxzxai.com` | F04, F05 | [F06-rag-agent.md](features/F06-rag-agent.md) |
 | F07 | 文档索引数据模型重构（版本行 / 双状态 / `is_latest` / 富 chunk） | `done` | 后台 / 租户隔离 | F03, F04 | [F07-doc-indexing-data-model.md](features/F07-doc-indexing-data-model.md) |
+| F08 | 数据模型列命名与身份字段重构 | `done` | 全局 schema | F01, F07 | [F08-data-model-naming-refactor.md](features/F08-data-model-naming-refactor.md) |
 
 ```mermaid
 flowchart LR
@@ -23,4 +24,6 @@ flowchart LR
   F05 --> F06
   F03 --> F07[F07 DocIndexingDataModel]
   F04 --> F07
+  F01 --> F08[F08 DataModelNaming]
+  F07 --> F08
 ```

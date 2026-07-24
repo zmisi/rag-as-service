@@ -70,6 +70,18 @@ def test_empty_section_no_leaf() -> None:
     assert chunk_text("   ") == []
 
 
+def test_f04_t19_embedding_text_includes_heading_path() -> None:
+    from rag_api.indexing.worker import build_embedding_text
+
+    text = build_embedding_text(
+        ["2.1 索引类型与选择", "2.1.1 B-Tree 索引适用场景"],
+        "B-Tree 适用于等值查询。",
+    )
+    assert text.startswith("2.1 索引类型与选择 > 2.1.1 B-Tree 索引适用场景")
+    assert "B-Tree 适用于等值查询。" in text
+    assert build_embedding_text([], "only body") == "only body"
+
+
 def test_hashing_embedder_dim_and_deterministic() -> None:
     emb = HashingEmbedder(dim=EMBEDDING_DIM)
     a = emb.embed(["退货窗口 30 天"])[0]

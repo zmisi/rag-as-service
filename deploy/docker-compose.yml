@@ -35,6 +35,11 @@ services:
         PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
         PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-pypi.tuna.tsinghua.edu.cn}
     restart: unless-stopped
+    # Repo-root .env (compose file lives under deploy/; without this,
+    # ${QWEN_API_KEY} interpolates empty and chat fails).
+    env_file:
+      - path: ../.env
+        required: false
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-rag_app}:${POSTGRES_PASSWORD:-rag_app}@db:5432/${POSTGRES_DB:-lxzxai_rag}
       AUTO_MIGRATE: ${AUTO_MIGRATE:-true}
@@ -46,6 +51,9 @@ services:
       API_HOST: 0.0.0.0
       API_PORT: 8000
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # Prefer values from env_file (../.env). Do not set QWEN_API_KEY here
+      # with ${QWEN_API_KEY:-} — empty interpolation would override env_file.
+      INDEX_SYNC_ON_PUBLISH: ${INDEX_SYNC_ON_PUBLISH:-false}
     ports:
       - "${API_PORT:-8000}:8000"
     volumes:

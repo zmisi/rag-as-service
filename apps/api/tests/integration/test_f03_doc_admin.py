@@ -119,7 +119,7 @@ def test_f03_t05_publish_creates_index_job(client_a, db):
     assert body["version"] == 1
     assert body["index_status"] in ("pending", "processing")
     job = db.scalar(
-        select(IndexJob).where(IndexJob.document_id == doc_id)
+        select(IndexJob).where(IndexJob.doc_id == doc_id)
     )
     assert job is not None
     assert job.status == "pending"

@@ -1,4 +1,5 @@
 import concurrent.futures
+import threading
 import uuid
 
 import pytest
@@ -22,7 +23,7 @@ def _register_payload(email: str | None = None, subdomain: str | None = None):
 
 def _tenant_count(db_session: Session, subdomain: str) -> int:
     return db_session.execute(
-        text("SELECT count(*) FROM rag_service.tenants WHERE subdomain = :subdomain"),
+        text("SELECT count(*) FROM rag_service.tenants WHERE tenant_name = :subdomain"),
         {"subdomain": subdomain},
     ).scalar_one()
 
@@ -33,8 +34,8 @@ def _owner_count(db_session: Session, subdomain: str) -> int:
             """
             SELECT count(*)
             FROM rag_service.tenant_members tm
-            JOIN rag_service.tenants t ON t.id = tm.tenant_id
-            WHERE t.subdomain = :subdomain AND tm.role = 'owner'
+            JOIN rag_service.tenants t ON t.tenant_id = tm.tenant_id
+            WHERE t.tenant_name = :subdomain AND tm.role = 'owner'
             """
         ),
         {"subdomain": subdomain},
@@ -141,7 +142,7 @@ def test_f01_t06_email_already_registered(api_client, db_session):
 @pytest.mark.integration
 def test_f01_t08_concurrent_subdomain_registration(db_engine: Engine):
     subdomain = unique_subdomain("race")
-    barrier = concurrent.futures.Barrier(2)
+    barrier = threading.Barrier(2)
     results: list[bool] = []
 
     def attempt(index: int) -> None:
@@ -174,7 +175,7 @@ def test_f01_t08_concurrent_subdomain_registration(db_engine: Engine):
 
     with db_engine.connect() as conn:
         count = conn.execute(
-            text("SELECT count(*) FROM rag_service.tenants WHERE subdomain = :subdomain"),
+            text("SELECT count(*) FROM rag_service.tenants WHERE tenant_name = :subdomain"),
             {"subdomain": subdomain},
         ).scalar_one()
         assert count == 1
@@ -185,14 +186,14 @@ def test_f01_t08_concurrent_subdomain_registration(db_engine: Engine):
                 """
                 DELETE FROM rag_service.tenant_members
                 WHERE tenant_id IN (
-                  SELECT id FROM rag_service.tenants WHERE subdomain = :subdomain
+                  SELECT tenant_id FROM rag_service.tenants WHERE tenant_name = :subdomain
                 )
                 """
             ),
             {"subdomain": subdomain},
         )
         conn.execute(
-            text("DELETE FROM rag_service.tenants WHERE subdomain = :subdomain"),
+            text("DELETE FROM rag_service.tenants WHERE tenant_name = :subdomain"),
             {"subdomain": subdomain},
         )
         conn.execute(

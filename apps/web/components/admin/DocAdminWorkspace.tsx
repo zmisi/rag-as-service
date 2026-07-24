@@ -28,6 +28,7 @@ export function DocAdminWorkspace() {
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [indexJob, setIndexJob] = useState<IndexJobStatus | null>(null);
 
@@ -134,6 +135,7 @@ export function DocAdminWorkspace() {
     }
     setBusy(true);
     setError(null);
+    setWarning(null);
     setValidationErrors([]);
     try {
       await saveDocument(selectedId, { title, tag });
@@ -152,11 +154,18 @@ export function DocAdminWorkspace() {
     if (!selectedId) return;
     setBusy(true);
     setError(null);
+    setWarning(null);
     try {
       const doc = await publishDocument(selectedId);
       setDetail(doc);
+      if (doc.warning) {
+        setWarning(doc.warning);
+      }
       const job = await getIndexStatus(selectedId);
       setIndexJob(job);
+      if (job?.warning) {
+        setWarning(job.warning);
+      }
       await refreshList();
     } catch (e) {
       setError(e instanceof Error ? e.message : "发布失败");
@@ -229,6 +238,11 @@ export function DocAdminWorkspace() {
         {error ? (
           <p className="doc-alert" role="alert">
             {error}
+          </p>
+        ) : null}
+        {warning ? (
+          <p className="doc-alert doc-alert-warning" role="status">
+            {warning}
           </p>
         ) : null}
         <DocEditor

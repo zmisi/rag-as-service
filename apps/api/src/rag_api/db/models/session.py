@@ -12,7 +12,7 @@ class Session(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     user_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True),
-        ForeignKey(f"{RAG_SCHEMA}.users.id", ondelete="CASCADE"),
+        ForeignKey(f"{RAG_SCHEMA}.users.user_id", ondelete="CASCADE"),
         nullable=False,
     )
     token_hash: Mapped[str] = mapped_column(Text, unique=True, nullable=False)

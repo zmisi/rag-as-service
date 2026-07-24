@@ -20,7 +20,7 @@ class AgentRunStep(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
     tenant_id: Mapped[UUID] = mapped_column(
-        ForeignKey(f"{RAG_SCHEMA}.tenants.id", ondelete="CASCADE"),
+        ForeignKey(f"{RAG_SCHEMA}.tenants.tenant_id", ondelete="CASCADE"),
         nullable=False,
     )
     agent_run_id: Mapped[UUID] = mapped_column(

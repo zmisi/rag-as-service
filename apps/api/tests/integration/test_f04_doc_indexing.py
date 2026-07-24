@@ -17,11 +17,20 @@ from rag_api.services.storage_service import StorageService
 
 
 def _seed_tenant(db: Session) -> tuple[Tenant, User]:
-    tenant = Tenant(subdomain=f"t-{uuid4().hex[:8]}", display_name="t")
-    user = User(email=f"u-{uuid4().hex[:8]}@example.com", password_hash="x")
+    uname = f"u{uuid4().hex[:10]}"
+    tname = f"t-{uuid4().hex[:8]}"
+    tenant = Tenant(tenant_name=tname)
+    user = User(email=f"{uname}@example.com", password_hash="x", user_name=uname)
     db.add_all([tenant, user])
     db.flush()
-    db.add(TenantMember(tenant_id=tenant.id, user_id=user.id, role="owner"))
+    db.add(
+        TenantMember(
+            tenant_id=tenant.tenant_id,
+            user_id=user.user_id,
+            member_name=uname,
+            role="owner",
+        )
+    )
     return tenant, user
 
 
@@ -34,35 +43,36 @@ def _published_doc_with_file(
     filename: str = "p.txt",
     body: bytes = b"hello",
     version: int = 1,
-    document_group_id=None,
+    doc_group_id=None,
     is_latest: bool = True,
 ) -> tuple[Document, IndexJob]:
-    group_id = document_group_id or uuid4()
+    group_id = doc_group_id or uuid4()
     doc = Document(
-        tenant_id=tenant.id,
-        created_by=user.id,
-        document_group_id=group_id,
-        title="退货",
-        tag="faq",
+        tenant_id=tenant.tenant_id,
+        created_by=user.user_id,
+        doc_group_id=group_id,
+        doc_name="退货",
+        doc_tag="faq",
         publish_status="published",
         index_status="pending",
-        version=version,
+        version_number=version,
         is_latest=is_latest,
-        metadata_={},
+        source_metadata={},
+        doc_size=len(body),
     )
     db.add(doc)
     db.flush()
     key = storage.storage_key(
-        tenant_id=tenant.id,
-        document_id=doc.id,
+        tenant_id=tenant.tenant_id,
+        document_id=doc.doc_id,
         version=str(version),
         filename=filename,
     )
     storage.write_bytes(key, body)
     db.add(
         DocumentFile(
-            tenant_id=tenant.id,
-            document_id=doc.id,
+            tenant_id=tenant.tenant_id,
+            doc_id=doc.doc_id,
             version=version,
             storage_key=key,
             filename=filename,
@@ -71,8 +81,8 @@ def _published_doc_with_file(
         )
     )
     job = IndexJob(
-        tenant_id=tenant.id,
-        document_id=doc.id,
+        tenant_id=tenant.tenant_id,
+        doc_id=doc.doc_id,
         version=version,
         status="pending",
     )
@@ -98,18 +108,18 @@ def test_f04_t01_publish_index_sections_and_leaves(db: Session, tmp_path) -> Non
     sec = db.execute(
         text(
             "SELECT count(*) FROM rag_service.document_sections "
-            "WHERE document_id = CAST(:id AS uuid) AND is_latest "
+            "WHERE doc_id = CAST(:id AS uuid) AND is_latest "
             "AND path <> '' AND content <> ''"
         ),
-        {"id": str(doc.id)},
+        {"id": str(doc.doc_id)},
     ).scalar()
     assert int(sec or 0) >= 1
     chunks = db.execute(
         text(
             "SELECT count(*) FROM rag_service.document_chunks "
-            "WHERE document_id = CAST(:id AS uuid) AND is_latest"
+            "WHERE doc_id = CAST(:id AS uuid) AND is_latest"
         ),
-        {"id": str(doc.id)},
+        {"id": str(doc.doc_id)},
     ).scalar()
     assert int(chunks or 0) >= 1
 
@@ -131,9 +141,9 @@ def test_f04_t02_review_not_indexed(db: Session, tmp_path) -> None:
     latest = db.execute(
         text(
             "SELECT count(*) FROM rag_service.document_chunks "
-            "WHERE document_id = CAST(:id AS uuid) AND is_latest"
+            "WHERE doc_id = CAST(:id AS uuid) AND is_latest"
         ),
-        {"id": str(doc.id)},
+        {"id": str(doc.doc_id)},
     ).scalar()
     assert int(latest or 0) == 0
 
@@ -156,9 +166,9 @@ def test_f04_t03_cross_tenant_search(db: Session, tmp_path) -> None:
         return db
 
     searcher = PgKnowledgeSearcher(factory, embedder=emb)
-    hits_b = searcher.search(tb.id, "UNIQUE_TENANT_A_PHRASE", top_k=5)
+    hits_b = searcher.search(tb.tenant_id, "UNIQUE_TENANT_A_PHRASE", top_k=5)
     assert hits_b == []
-    hits_a = searcher.search(ta.id, "UNIQUE_TENANT_A_PHRASE", top_k=5)
+    hits_a = searcher.search(ta.tenant_id, "UNIQUE_TENANT_A_PHRASE", top_k=5)
     assert hits_a
     assert any("UNIQUE_TENANT_A_PHRASE" in h.content for h in hits_a)
 
@@ -182,9 +192,9 @@ def test_f04_t04_empty_txt(db: Session, tmp_path) -> None:
     n = db.execute(
         text(
             "SELECT count(*) FROM rag_service.document_sections "
-            "WHERE document_id = CAST(:id AS uuid)"
+            "WHERE doc_id = CAST(:id AS uuid)"
         ),
-        {"id": str(doc.id)},
+        {"id": str(doc.doc_id)},
     ).scalar()
     assert int(n or 0) == 0
 
@@ -201,7 +211,7 @@ def test_f04_t05_version_supersede(db: Session, tmp_path) -> None:
         tenant=tenant,
         user=user,
         version=1,
-        document_group_id=group_id,
+        doc_group_id=group_id,
         is_latest=True,
     )
     process_index_job(
@@ -215,7 +225,7 @@ def test_f04_t05_version_supersede(db: Session, tmp_path) -> None:
     assert doc_v1.index_status == "ready"
     assert doc_v1.is_latest is True
 
-    # Partial unique on is_latest: clear v1 before inserting v2 as latest.
+    # App maintains single is_latest per group (no DB partial unique).
     doc_v1.is_latest = False
     db.commit()
 
@@ -225,7 +235,7 @@ def test_f04_t05_version_supersede(db: Session, tmp_path) -> None:
         tenant=tenant,
         user=user,
         version=2,
-        document_group_id=group_id,
+        doc_group_id=group_id,
         is_latest=True,
     )
 
@@ -248,17 +258,17 @@ def test_f04_t05_version_supersede(db: Session, tmp_path) -> None:
         text(
             """
             SELECT count(*) FROM rag_service.document_sections
-            WHERE document_id = CAST(:id AS uuid)
+            WHERE doc_id = CAST(:id AS uuid)
               AND is_latest = true
             """
         ),
-        {"id": str(doc_v1.id)},
+        {"id": str(doc_v1.doc_id)},
     ).scalar()
     assert int(old_latest or 0) == 0
 
     searcher = PgKnowledgeSearcher(factory, embedder=emb)
-    hits_old = searcher.search(tenant.id, "OLD_VERSION_PHRASE", top_k=5)
-    hits_new = searcher.search(tenant.id, "NEW_VERSION_PHRASE", top_k=5)
+    hits_old = searcher.search(tenant.tenant_id, "OLD_VERSION_PHRASE", top_k=5)
+    hits_new = searcher.search(tenant.tenant_id, "NEW_VERSION_PHRASE", top_k=5)
     # F04-T05: non-latest v1 must not surface; hashing embedder may false-match new text.
     assert not any("OLD_VERSION_PHRASE" in h.content for h in hits_old)
     assert hits_new
@@ -283,14 +293,14 @@ def test_f04_t06_soft_delete(db: Session, tmp_path) -> None:
         parser=ScriptedDocumentParser(default="# A\n\nSOFT_DELETE_PHRASE\n"),
     )
     doc.deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
-    deactivate_document_index(db, tenant_id=tenant.id, document_id=doc.id)
+    deactivate_document_index(db, tenant_id=tenant.tenant_id, document_id=doc.doc_id)
     db.commit()
 
     def factory():
         return db
 
     hits = PgKnowledgeSearcher(factory, embedder=emb).search(
-        tenant.id, "SOFT_DELETE_PHRASE", top_k=5
+        tenant.tenant_id, "SOFT_DELETE_PHRASE", top_k=5
     )
     assert hits == []
 
@@ -316,9 +326,9 @@ def test_f04_t07_parse_failure(db: Session, tmp_path) -> None:
     latest = db.execute(
         text(
             "SELECT count(*) FROM rag_service.document_chunks "
-            "WHERE document_id = CAST(:id AS uuid) AND is_latest"
+            "WHERE doc_id = CAST(:id AS uuid) AND is_latest"
         ),
-        {"id": str(doc.id)},
+        {"id": str(doc.doc_id)},
     ).scalar()
     assert int(latest or 0) == 0
 
@@ -343,7 +353,7 @@ def test_f04_t08_search_returns_section_and_path(db: Session, tmp_path) -> None:
         return db
 
     hits = PgKnowledgeSearcher(factory, embedder=emb).search(
-        tenant.id, "独特短语退货三十天窗口", top_k=3
+        tenant.tenant_id, "独特短语退货三十天窗口", top_k=3
     )
     assert hits
     assert hits[0].path
@@ -375,9 +385,9 @@ def test_f04_t09_empty_pdf_succeeds(db: Session, tmp_path) -> None:
     n = db.execute(
         text(
             "SELECT count(*) FROM rag_service.document_sections "
-            "WHERE document_id = CAST(:id AS uuid)"
+            "WHERE doc_id = CAST(:id AS uuid)"
         ),
-        {"id": str(doc.id)},
+        {"id": str(doc.doc_id)},
     ).scalar()
     assert int(n or 0) == 0
 
@@ -411,7 +421,7 @@ PHRASE_ONLY_IN_B 内容乙
             "WHERE tenant_id = CAST(:tid AS uuid) AND is_latest "
             "ORDER BY section_index"
         ),
-        {"tid": str(tenant.id)},
+        {"tid": str(tenant.tenant_id)},
     ).mappings().all()
     paths = [r["path"] for r in secs]
     assert any("章节甲" in p for p in paths)
@@ -426,13 +436,13 @@ PHRASE_ONLY_IN_B 内容乙
         return db
 
     searcher = PgKnowledgeSearcher(factory, embedder=emb)
-    hits = searcher.search(tenant.id, "PHRASE_ONLY_IN_B", top_k=5)
+    hits = searcher.search(tenant.tenant_id, "PHRASE_ONLY_IN_B", top_k=5)
     assert hits
     assert "PHRASE_ONLY_IN_B" in hits[0].content
     assert "PHRASE_ONLY_IN_A" not in hits[0].content
     assert "章节乙" in hits[0].path
 
     # T12: same section should appear once even if we ask for more
-    hits2 = searcher.search(tenant.id, "PHRASE_ONLY_IN_B", top_k=10)
+    hits2 = searcher.search(tenant.tenant_id, "PHRASE_ONLY_IN_B", top_k=10)
     section_ids = [h.section_id for h in hits2]
     assert len(section_ids) == len(set(section_ids))

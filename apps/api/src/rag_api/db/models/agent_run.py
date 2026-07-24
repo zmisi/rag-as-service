@@ -18,7 +18,7 @@ class AgentRun(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "agent_runs"
 
     tenant_id: Mapped[UUID] = mapped_column(
-        ForeignKey(f"{RAG_SCHEMA}.tenants.id", ondelete="CASCADE"),
+        ForeignKey(f"{RAG_SCHEMA}.tenants.tenant_id", ondelete="CASCADE"),
         nullable=False,
     )
     conversation_id: Mapped[UUID] = mapped_column(
