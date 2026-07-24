@@ -21,6 +21,7 @@ from rag_api.db.models import (
     DocumentChunk,
     DocumentFile,
     DocumentSection,
+    FaqSuggestionStats,
     IndexJob,
     Message,
     Tenant,
@@ -105,18 +106,10 @@ def db(db_engine: Engine) -> Generator[Session, None, None]:
 
 @pytest.fixture
 def tenants(db: Session) -> dict:
-    """Seed two tenants with owner members; wipe conversation/agent data each test."""
-    db.execute(delete(AgentRunStep))
-    db.execute(delete(Message))
-    db.execute(delete(AgentRun))
-    db.execute(delete(Conversation))
-    db.execute(delete(DocumentChunk))
-    db.execute(delete(DocumentSection))
-    db.execute(delete(IndexJob))
-    db.execute(delete(DocumentFile))
-    db.execute(delete(Document))
-    db.commit()
+    """Seed pytest-a/b owners; wipe **only those tenants'** data each test.
 
+    Never DELETE across the whole DB — local/dev data shares the same Postgres.
+    """
     password_hash = hash_password("password123")
 
     def ensure_tenant(subdomain: str, email: str) -> tuple[Tenant, User]:
@@ -157,8 +150,37 @@ def tenants(db: Session) -> dict:
         db.refresh(user)
         return tenant, user
 
-    tenant_a, user_a = ensure_tenant("tenant-a", "owner-a@example.com")
-    tenant_b, user_b = ensure_tenant("tenant-b", "owner-b@example.com")
+    tenant_a, user_a = ensure_tenant("pytest-a", "owner-pytest-a@example.com")
+    tenant_b, user_b = ensure_tenant("pytest-b", "owner-pytest-b@example.com")
+    test_tenant_ids = (tenant_a.tenant_id, tenant_b.tenant_id)
+
+    # Scoped wipe: only fixture tenants (preserve other local/dev tenants).
+    db.execute(
+        delete(AgentRunStep).where(AgentRunStep.tenant_id.in_(test_tenant_ids))
+    )
+    db.execute(delete(Message).where(Message.tenant_id.in_(test_tenant_ids)))
+    db.execute(delete(AgentRun).where(AgentRun.tenant_id.in_(test_tenant_ids)))
+    db.execute(
+        delete(Conversation).where(Conversation.tenant_id.in_(test_tenant_ids))
+    )
+    db.execute(
+        delete(FaqSuggestionStats).where(
+            FaqSuggestionStats.tenant_id.in_(test_tenant_ids)
+        )
+    )
+    db.execute(
+        delete(DocumentChunk).where(DocumentChunk.tenant_id.in_(test_tenant_ids))
+    )
+    db.execute(
+        delete(DocumentSection).where(DocumentSection.tenant_id.in_(test_tenant_ids))
+    )
+    db.execute(delete(IndexJob).where(IndexJob.tenant_id.in_(test_tenant_ids)))
+    db.execute(
+        delete(DocumentFile).where(DocumentFile.tenant_id.in_(test_tenant_ids))
+    )
+    db.execute(delete(Document).where(Document.tenant_id.in_(test_tenant_ids)))
+    db.commit()
+
     return {
         "tenant_a": tenant_a,
         "user_a": user_a,
@@ -197,7 +219,7 @@ def client_a(
     fake_searcher: FakeKnowledgeSearcher,
     scripted_llm: ScriptedLlmClient,
 ) -> Generator[TestClient, None, None]:
-    """F05/F06 TestClient with cookie auth for tenant-a and mocked LLM/search."""
+    """F05/F06 TestClient with cookie auth for pytest-a and mocked LLM/search."""
 
     def _override_db() -> Generator[Session, None, None]:
         yield db
@@ -210,7 +232,7 @@ def client_a(
         set_client_session_cookie(
             c,
             token,
-            host=tenant_host_headers("tenant-a")["Host"],
+            host=tenant_host_headers("pytest-a")["Host"],
         )
         yield c
     app.dependency_overrides.clear()
@@ -223,7 +245,7 @@ def switch_to_b(client_a: TestClient, tenants: dict, db: Session):
         set_client_session_cookie(
             client_a,
             token,
-            host=tenant_host_headers("tenant-b")["Host"],
+            host=tenant_host_headers("pytest-b")["Host"],
         )
         return client_a
 

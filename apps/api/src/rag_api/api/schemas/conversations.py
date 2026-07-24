@@ -35,6 +35,15 @@ class MessageCreate(BaseModel):
     meta: Optional[dict[str, Any]] = None
 
 
+class PortalMessageCreate(BaseModel):
+    """F14: collection message entry; conversation_id optional for draft first send."""
+
+    role: Literal["user", "assistant", "system", "tool"]
+    content: str = Field(min_length=1)
+    meta: Optional[dict[str, Any]] = None
+    conversation_id: Optional[UUID] = None
+
+
 class MessageOut(BaseModel):
     id: UUID
     conversation_id: UUID
@@ -58,3 +67,4 @@ class TurnReply(BaseModel):
     used_search: bool
     status: Literal["completed", "truncated", "error"]
     conversation_title: Optional[str] = None
+    conversation_id: Optional[UUID] = None

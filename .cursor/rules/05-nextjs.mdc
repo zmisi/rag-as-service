@@ -12,3 +12,4 @@ alwaysApply: false
 4. 浏览器只请求同源反代路径（如 `/backend/...`），不写死后端内网 URL。
 5. 聊天可流式展示，但最终 assistant 消息须可测落库（F06）；UI 不做 Spec 外产品功能。
 6. 避免无 Spec 要求的营销落地页、多余 dashboard 卡片或装饰性堆砌。
+7. **品牌图标**：全站 favicon / Tab 图标用 `/brand-cube.png`（见 `00-constraints` §3.0a）；根 layout 的 `metadata.icons` 与 `app/icon.png` 保持一致，覆盖 `/login`、`/register`、`/admin`、Portal 等所有路由。

@@ -11,8 +11,8 @@ from rag_api.config import get_settings
 from rag_api.db.models import Document, DocumentChunk, DocumentFile, DocumentSection, IndexJob
 from tests.helpers import tenant_host_headers
 
-HEADERS_A = tenant_host_headers("tenant-a")
-HEADERS_B = tenant_host_headers("tenant-b")
+HEADERS_A = tenant_host_headers("pytest-a")
+HEADERS_B = tenant_host_headers("pytest-b")
 
 PDF_BYTES = b"%PDF-1.4 minimal test content"
 

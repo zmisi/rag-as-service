@@ -124,7 +124,7 @@ export function RegisterForm() {
         </p>
       ) : null}
 
-      <button type="submit" disabled={submitting}>
+      <button type="submit" className="btn primary" disabled={submitting}>
         {submitting ? "注册中…" : "注册"}
       </button>
     </form>

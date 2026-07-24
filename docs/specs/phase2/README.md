@@ -1,7 +1,7 @@
 # Phase 2 Specs
 
 Phase 2 产品 Spec。Feature 是最小交付单位；**验收只看该 Feature 的 Test Cases 是否通过**。  
-当前 Feature 状态均为 **`draft`**（未 `approved` 不得实现）。
+F13 / F14 为 **`done`**；其余 Feature 仍为 **`draft`**（未 `approved` 不得实现）。
 
 ## 怎么读
 
@@ -22,5 +22,6 @@ Phase 2 产品 Spec。Feature 是最小交付单位；**验收只看该 Feature 
 | 对外 API + API Key | F11 |
 | Embed Widget | F12 |
 | Portal FAQ 推荐 | F13 |
+| Portal 壳与延迟会话 | F14 |
 
 微信登录、SOP 强制验证门禁 → **Phase 3**（见 phase list）。

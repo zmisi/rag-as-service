@@ -54,6 +54,12 @@ alwaysApply: true
 
 细节目录与反代见 [06-repo-layout.mdc](06-repo-layout.mdc)、[05-nextjs.mdc](05-nextjs.mdc)。
 
+### 3.0a 品牌图标（硬规则）
+
+- **唯一项目品牌图标**：[`apps/web/public/brand-cube.png`](../../apps/web/public/brand-cube.png)（teal/slate 等距方块；须为真透明 RGBA，禁止棋盘格伪透明）。
+- **浏览器 Tab / favicon / apple-touch**：全站（含 `lxzxai.com` 登录注册、`{subdomain}.lxzxai.com` Portal、`/admin` 等）统一用该图标；实现上同步 `apps/web/app/icon.png`、`apps/web/app/apple-icon.png`，并由根 `app/layout.tsx` `metadata.icons` 引用 `/brand-cube.png`。
+- Portal 空态 hero、后续营销/壳层 UI 的产品标也复用同一文件；**禁止**另引入第三方品牌 Logo 作为本产品主标。
+
 ## 3.1 Schema
 
 - 业务表统一置于 PostgreSQL schema **`rag_service`**；禁止在 `public` 下建业务表。
@@ -112,7 +118,7 @@ alwaysApply: true
 - Office OOXML（`.docx` / `.xlsx` / `.pptx`）上传与索引
 - Admin 文件夹树、文档预览
 - `{subdomain}.lxzxai.com/api` + API Key；Embed Widget
-- Portal FAQ 推荐（热度 / 换一批）
+- Portal FAQ 推荐（热度 / 换一批）；Portal 壳与 New task 延迟会话（F14）
 
 ### Phase 3 预留
 

@@ -26,8 +26,8 @@ from rag_api.services.storage_service import StorageService
 from tests.helpers import tenant_host_headers
 from tests.integration.test_f04_doc_indexing import _published_doc_with_file, _seed_tenant
 
-HEADERS_A = tenant_host_headers("tenant-a")
-HEADERS_B = tenant_host_headers("tenant-b")
+HEADERS_A = tenant_host_headers("pytest-a")
+HEADERS_B = tenant_host_headers("pytest-b")
 
 TXT_BODY = b"# Title\n\nUNIQUE_F07_PHRASE content body\n"
 TXT_BODY_DUP = TXT_BODY  # identical bytes for content_sha256 skip

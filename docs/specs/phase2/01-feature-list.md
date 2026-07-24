@@ -10,7 +10,8 @@ Phase 索引见 [../01-phase-list.md](../01-phase-list.md)。
 | F10 | 文档预览 | `draft` | `{subdomain}.lxzxai.com/admin` | F03, F08 | [F10-doc-preview.md](features/F10-doc-preview.md) |
 | F11 | 租户对外 API | `draft` | `{subdomain}.lxzxai.com/api` | F04, F06 | [F11-tenant-public-api.md](features/F11-tenant-public-api.md) |
 | F12 | Embed Widget | `draft` | 客户站点嵌入 | F11 | [F12-embed-widget.md](features/F12-embed-widget.md) |
-| F13 | Portal FAQ 推荐 | `draft` | `{subdomain}.lxzxai.com` | F03, F06 | [F13-portal-faq-suggestions.md](features/F13-portal-faq-suggestions.md) |
+| F13 | Portal FAQ 推荐 | `done` | `{subdomain}.lxzxai.com` | F03, F06 | [F13-portal-faq-suggestions.md](features/F13-portal-faq-suggestions.md) |
+| F14 | Portal 壳与延迟会话 | `done` | `{subdomain}.lxzxai.com` | F05, F06, F13 | [F14-portal-shell.md](features/F14-portal-shell.md) |
 
 ```mermaid
 flowchart LR
@@ -24,4 +25,7 @@ flowchart LR
   F11 --> F12[F12 Widget]
   F06 --> F13[F13 PortalFAQ]
   F03 --> F13
+  F05[F05 Conversations] --> F14[F14 PortalShell]
+  F06 --> F14
+  F13 --> F14
 ```
