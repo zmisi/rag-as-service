@@ -48,6 +48,17 @@ docker compose -f deploy/docker-compose.yml build \
   api
 
 docker compose -f deploy/docker-compose.yml up -d --force-recreate api web
+
+# 查看详细日志
+# 只看 API（索引 / parse_route / 报错最常用）
+docker compose -f deploy/docker-compose.yml logs -f api
+
+# API + Web
+docker compose -f deploy/docker-compose.yml logs -f api web
+
+# 全部服务
+docker compose -f deploy/docker-compose.yml logs -f
+
 ```
 
 服务：
@@ -102,6 +113,8 @@ curl -X POST 'http://127.0.0.1:8000/v1/documents/index/run-pending' \
   -H 'Host: opc15.lxzxai.com' \
   -H 'Content-Type: application/json' \
   -b 'pb_session=eBFP3lHKDLheVtMOyPglWJUL36vNXJQhPXy17ktgkNw'
+
+
 ```
 
 确认迁移已到最新：
@@ -155,22 +168,22 @@ docker compose -f deploy/docker-compose.yml build \
 说明：
 
 - `.pdf`：**PyMuPDF fast path**（默认依赖，轻量）→ 质量门限不达标时再 **Docling fallback**
-- `.docx` / `.pptx`：固定 Docling（需 `INSTALL_DOCLING=1`）
-- 首次走 Docling 时会从 Hugging Face 拉模型，发布接口可能较慢；模型缓存后会明显加快
+- `.docx` / `.xlsx` / `.pptx`：轻量库（`python-docx` / `openpyxl` / `python-pptx`），**不用 Docling**
+- 首次走 Docling（结构化 PDF）时会从 Hugging Face 拉模型，发布接口可能较慢；模型缓存后会明显加快
 - `INDEX_SYNC_ON_PUBLISH=true` 时发布会同步跑完索引；Docling 首次下载可能导致代理超时，可稍后看 `index-status` 或重试发布
 
 E2E：`E2E_ENABLED=1` + `DATABASE_URL` 后 `cd apps/web && npm run test:e2e`。
 
-## F04 / F07 文档索引与数据模型（本地）
+## F04 / F07 / F08 文档索引与数据模型（本地）
 
 发布 `published` 文档后会写入 `index_job`；默认 `INDEX_SYNC_ON_PUBLISH=true` 会在发布 API 内联跑完索引。文档行是**版本行**（`document_group_id` + int `version`）；检索门禁为 `publish_status=published` 且 `index_status=ready` 且 section/chunk `is_latest=true`。
 
 | 能力 | 说明 |
 |------|------|
-| `.txt` / `.md` | 内置文本解析，无需额外依赖 |
-| `.pdf` | **PyMuPDF → Docling** 双路由；质量阈值见 `PDF_FAST_*`（默认 80 / 40 / 0.85 / 0.50） |
-| `.docx` / `.pptx` | 需 [Docling](https://github.com/docling-project/docling)：`cd apps/api && uv sync --extra docling` |
-| 切块 | H1/H2 节树 + 节内 leaf（`CHUNK_TARGET_TOKENS` / `CHUNK_OVERLAP_TOKENS`） |
+| `.txt` / `.md` | 内置文本解析；上传侧扩展名 + 无 `\x00` 魔数抽检 |
+| `.pdf` | **PyMuPDF → Docling** 双路由；头魔数 `%PDF`；质量阈值见 `PDF_FAST_*` |
+| `.docx` / `.pptx` / `.xlsx` | 轻量库 → 内存 Markdown；ZIP + `word/`/`ppt/`/`xl/` 魔数；`parse_route=docx\|pptx\|xlsx` |
+| 切块 | H1–H6 节树 + 节内 leaf（`CHUNK_TARGET_TOKENS` / `CHUNK_OVERLAP_TOKENS`） |
 | Embedding | 默认 `HashingEmbedder`（本地无 DashScope）；生产可设 `QWEN_EMBEDDING_ENABLED=true`；审计字段写在 **documents** |
 | PDF 路由 | **有骨架**（书签 TOC / 字号标题候选，或 `PDF_FORCE_STRUCTURE=true`）→ Docling 结构路径；**无骨架纯文字** → PyMuPDF；结构 PDF 需 `INSTALL_DOCLING=1` |
 | 源文件持久化 | Compose 卷 `api_storage` → `/app/var/storage` |
@@ -178,12 +191,13 @@ E2E：`E2E_ENABLED=1` + `DATABASE_URL` 后 `cd apps/web && npm run test:e2e`。
 
 **迁移 / 重建索引：**
 
-1. `AUTO_MIGRATE=true`（Compose 默认）会应用至 **`20260723_f08_naming`**（F04 sections + F07 版本行 + **F08 列命名**）。
+1. `AUTO_MIGRATE=true`（Compose 默认）会应用至 **`20260724_drop_sections_level_chk`**（含 F04/F07/F08 及去掉 `document_sections_level_chk`）。
 2. **拉最新代码后须重建 `api`**（热重载不够）：见上文「常用：启停 / 迁移后重建」；若 `web` 为 Exited，再 `up -d web`。
 3. 原生进程：`cd apps/api && uv run alembic upgrade head`。
 4. **F08 为破坏性重命名**（`tenant_id`/`user_id`/`doc_id`/`chunk_id`，`subdomain`→`tenant_name`，`version`→`version_number` 等）。迁移失败时可重建 Postgres 卷后再 `upgrade head`。
 5. F07 升级时会清空旧 `document_sections` / `document_chunks`（需 **reindex**）。
 6. 对已 `published` 文档：重新走发布流，或确保有 pending `index_job` 后调用 `POST /v1/documents/index/run-pending`。
+7. **节树改为 H1–H6 后**：已 `ready` 的文档仍是旧 H1/H2 切分；须重新 publish / 跑 index job 才会按 H1–H6 重建。
 
 **集成测试：**
 

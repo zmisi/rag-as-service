@@ -18,11 +18,10 @@ from rag_api.domain.documents.constants import (
     WARNING_CODE_DUPLICATE_CONTENT_SHA256,
     WARNING_DUPLICATE_CONTENT_SHA256,
     content_sha256,
-    file_type_reject_message,
-    is_allowed_extension,
     is_valid_tag,
     next_version,
 )
+from rag_api.domain.documents.file_type import FileTypeError, validate_file_type
 from rag_api.indexing.worker import mark_document_index_not_latest, process_index_job
 from rag_api.services.storage_service import StorageService
 
@@ -146,11 +145,10 @@ def add_file(
 ) -> DocumentFile:
     if len(data) > MAX_FILE_BYTES:
         raise HTTPException(status_code=400, detail="File exceeds 20MB limit")
-    if not is_allowed_extension(filename):
-        raise HTTPException(
-            status_code=400,
-            detail=file_type_reject_message(filename),
-        )
+    try:
+        validate_file_type(filename, data)
+    except FileTypeError as exc:
+        raise HTTPException(status_code=400, detail=exc.message) from exc
 
     doc = _get_document(db, document_id=document_id, tenant_id=tenant_id)
     if doc.publish_status == "published":

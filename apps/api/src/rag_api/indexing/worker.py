@@ -1,4 +1,4 @@
-"""Index job worker: parse → H1/H2 sections → leaf chunk → embed → pgvector."""
+"""Index job worker: parse → H1–H6 sections → leaf chunk → embed → pgvector."""
 
 from __future__ import annotations
 
@@ -155,16 +155,26 @@ def _persist_sections_and_leaves(
     overlap_tokens: int,
 ) -> int:
     """Insert sections + leaf chunks. Returns leaf count."""
-    h1_ids: dict[str, str] = {}
+    path_to_id: dict[str, str] = {}
     leaf_count = 0
     all_leaf_texts: list[tuple[str, str, list[str]]] = []  # section_id, content, heading_path
     chunk_index = 0
 
+    def _resolve_parent_id(parent_path: str | None) -> str | None:
+        """Walk up path ancestors until a persisted section is found."""
+        cur = parent_path
+        while cur:
+            found = path_to_id.get(cur)
+            if found is not None:
+                return found
+            if " > " not in cur:
+                return None
+            cur = cur.rsplit(" > ", 1)[0]
+        return None
+
     for section_index, draft in enumerate(drafts):
         section_id = str(uuid4())
-        parent_id = None
-        if draft.level == 2 and draft.h1_title and draft.h1_title in h1_ids:
-            parent_id = h1_ids[draft.h1_title]
+        parent_id = _resolve_parent_id(draft.parent_path)
         db.execute(
             text(
                 """
@@ -198,8 +208,7 @@ def _persist_sections_and_leaves(
                 "section_index": section_index,
             },
         )
-        if draft.level == 1:
-            h1_ids[draft.title] = section_id
+        path_to_id[draft.path] = section_id
 
         pieces = chunk_text(
             draft.content,

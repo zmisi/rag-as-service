@@ -70,6 +70,46 @@ def test_empty_section_no_leaf() -> None:
     assert chunk_text("   ") == []
 
 
+def test_f04_t23_table_aware_split_when_over_budget() -> None:
+    """F04-T23: over budget → split before/after table; table stays intact."""
+    prose = ("正文说明段落。关于部分索引的用法。" * 80)
+    table = (
+        "| 索引类型 | 使用范围 | 注意事项 | 备注 |\n"
+        "| --- | --- | --- | --- |\n"
+        "| B-Tree 索引 | 使用范围最高 | 111233 | abc |\n"
+        "| 位图索引 | 使用范围比较低 | 3333444 | cdb |"
+    )
+    body = f"{prose}\n\n{table}\n\n尾部补充说明。"
+    # Budget fits the small table alone, but not prose+table together.
+    table_tokens = max(1, (len(table) // 2) + 5)
+    assert len(body) > table_tokens * 2
+    leaves = chunk_text(body, target_tokens=table_tokens, overlap_tokens=5)
+    assert len(leaves) >= 2
+    table_leaves = [x for x in leaves if "| B-Tree 索引 |" in x]
+    assert len(table_leaves) == 1
+    tbl = table_leaves[0]
+    assert "| 索引类型 |" in tbl
+    assert "| 位图索引 |" in tbl
+    assert "---" in tbl
+    # Table leaf is not mid-cell char-sliced (starts at header).
+    assert tbl.lstrip().startswith("| 索引类型 |")
+    # Prose-only leaves must not be mid-table row fragments.
+    for leaf in leaves:
+        if leaf.strip().startswith("|") and "索引类型" not in leaf:
+            pytest.fail(f"unexpected severed table fragment: {leaf!r}")
+
+
+def test_under_budget_keeps_mixed_single_leaf() -> None:
+    body = (
+        "短正文。\n\n"
+        "| a | b |\n"
+        "| --- | --- |\n"
+        "| 1 | 2 |"
+    )
+    leaves = chunk_text(body, target_tokens=800, overlap_tokens=100)
+    assert leaves == [body.strip()]
+
+
 def test_f04_t19_embedding_text_includes_heading_path() -> None:
     from rag_api.indexing.worker import build_embedding_text
 

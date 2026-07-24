@@ -146,11 +146,12 @@ def test_f03_t07_reject_exe_upload(client_a):
     assert r.status_code == 400
 
 
-def test_f03_t07b_reject_legacy_doc_ppt(client_a):
+def test_f03_t07b_reject_legacy_doc_ppt_xls(client_a):
     doc_id = _create_doc(client_a)
     for name, payload in (
         ("legacy.doc", b"OLE"),
         ("legacy.ppt", b"OLE"),
+        ("legacy.xls", b"OLE"),
     ):
         r = client_a.post(
             f"/v1/documents/{doc_id}/files",
@@ -159,12 +160,12 @@ def test_f03_t07b_reject_legacy_doc_ppt(client_a):
         )
         assert r.status_code == 400, name
         detail = r.json()["detail"]
-        assert "docx" in detail.lower() and "pptx" in detail.lower(), detail
+        assert "docx" in detail.lower() and "pptx" in detail.lower() and "xlsx" in detail.lower(), detail
 
 
 def test_f03_t08_reject_oversized_file(client_a):
     doc_id = _create_doc(client_a)
-    big = b"x" * (20 * 1024 * 1024 + 1)
+    big = b"%PDF-1.4 " + (b"x" * (20 * 1024 * 1024 + 1))
     r = client_a.post(
         f"/v1/documents/{doc_id}/files",
         headers=HEADERS_A,

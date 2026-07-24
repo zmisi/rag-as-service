@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 from dataclasses import dataclass
 from types import SimpleNamespace
 
@@ -161,10 +162,18 @@ def test_f04_t14_quality_fail_falls_back_to_docling() -> None:
     assert tracker.calls == ["weak.pdf"]
 
 
-def test_f04_t14_pymupdf_error_falls_back_to_docling() -> None:
+def test_f04_t14_pymupdf_error_falls_back_to_docling(monkeypatch) -> None:
     tracker = _TrackingDocling(calls=[], result="recovered")
     parser = RoutedDocumentParser(docling=tracker, settings=_settings())
-    outcome = parser.parse_outcome("broken.pdf", b"not-a-pdf")
+
+    def _boom(_data: bytes) -> PdfFastMetrics:
+        raise ParseError("pymupdf explode")
+
+    monkeypatch.setattr(
+        "rag_api.indexing.parse.extract_pdf_pages_pymupdf",
+        _boom,
+    )
+    outcome = parser.parse_outcome("broken.pdf", b"%PDF-1.4 stub")
     assert outcome.route == "docling"
     assert outcome.text == "recovered"
     assert tracker.calls == ["broken.pdf"]
@@ -185,13 +194,22 @@ def test_empty_text_layer_pdf_stays_pymupdf_no_docling() -> None:
     assert tracker.calls == []
 
 
-def test_f04_t15_docx_bypasses_pymupdf() -> None:
-    tracker = _TrackingDocling(calls=[], result="# Office\n\nfrom docling")
+def test_f04_t15_office_uses_lightweight_not_docling() -> None:
+    """F08: .docx uses python-docx route, not Docling/PyMuPDF."""
+    from docx import Document
+
+    buf = io.BytesIO()
+    doc = Document()
+    doc.add_paragraph("Office lite body")
+    doc.save(buf)
+    data = buf.getvalue()
+
+    tracker = _TrackingDocling(calls=[])
     parser = RoutedDocumentParser(docling=tracker, settings=_settings())
-    outcome = parser.parse_outcome("manual.docx", b"PK\x03\x04-fake-docx")
-    assert outcome.route == "docling"
-    assert "from docling" in outcome.text
-    assert tracker.calls == ["manual.docx"]
+    outcome = parser.parse_outcome("manual.docx", data)
+    assert outcome.route == "docx"
+    assert "Office lite body" in outcome.text
+    assert tracker.calls == []
 
 
 def test_extract_pdf_pages_metrics() -> None:

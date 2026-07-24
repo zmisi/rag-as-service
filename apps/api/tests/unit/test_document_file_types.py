@@ -8,17 +8,17 @@ from rag_api.domain.documents.constants import (
 
 
 def test_allows_ooxml_and_text_pdf():
-    for name in ("a.txt", "b.PDF", "c.docx", "d.PPTX"):
+    for name in ("a.txt", "b.PDF", "c.docx", "d.PPTX", "e.xlsx"):
         assert is_allowed_extension(name), name
         assert not is_legacy_extension(name), name
 
 
 def test_rejects_legacy_doc_ppt():
-    for name in ("legacy.doc", "slides.PPT"):
+    for name in ("legacy.doc", "slides.PPT", "sheet.xls"):
         assert not is_allowed_extension(name), name
         assert is_legacy_extension(name), name
         msg = file_type_reject_message(name).lower()
-        assert "docx" in msg and "pptx" in msg
+        assert "docx" in msg and "pptx" in msg and "xlsx" in msg
 
 
 def test_rejects_other_types():

@@ -3,6 +3,7 @@ from rag_api.domain.documents.constants import (
     CHUNK_TYPES,
     DOC_STATUSES,
     DOC_TAGS,
+    FILE_TYPE_MISMATCH_MESSAGE,
     INDEX_JOB_ERROR_DUPLICATE_CONTENT_SHA256,
     INDEX_STATUSES,
     LEGACY_EXTENSIONS,
@@ -18,14 +19,17 @@ from rag_api.domain.documents.constants import (
     is_allowed_extension,
     is_legacy_extension,
     is_valid_tag,
+    matched_allowed_extension,
     next_version,
 )
+from rag_api.domain.documents.file_type import FileTypeError, validate_file_type
 
 __all__ = [
     "ALLOWED_EXTENSIONS",
     "CHUNK_TYPES",
     "DOC_STATUSES",
     "DOC_TAGS",
+    "FILE_TYPE_MISMATCH_MESSAGE",
     "INDEX_JOB_ERROR_DUPLICATE_CONTENT_SHA256",
     "INDEX_STATUSES",
     "LEGACY_EXTENSIONS",
@@ -33,6 +37,7 @@ __all__ = [
     "PUBLISH_STATUSES",
     "WARNING_CODE_DUPLICATE_CONTENT_SHA256",
     "WARNING_DUPLICATE_CONTENT_SHA256",
+    "FileTypeError",
     "bump_version",
     "content_sha256",
     "content_sha256_hex",
@@ -41,5 +46,7 @@ __all__ = [
     "is_allowed_extension",
     "is_legacy_extension",
     "is_valid_tag",
+    "matched_allowed_extension",
     "next_version",
+    "validate_file_type",
 ]

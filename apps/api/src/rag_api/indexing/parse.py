@@ -1,8 +1,9 @@
-"""Document parsing to Markdown (F04).
+"""Document parsing to Markdown (F04 / F08).
 
 PDF routing: skeleton → Docling structure path; plain text → PyMuPDF;
 quality gate is an auxiliary fallback on the no-skeleton path.
-Office (.docx/.pptx): Docling. Text (.txt/.md): decode.
+Office (.docx/.xlsx/.pptx): lightweight libraries (not Docling).
+Text (.txt/.md): decode.
 """
 
 from __future__ import annotations
@@ -25,7 +26,8 @@ from rag_api.indexing.pdf_skeleton import SkeletonProbe, detect_pdf_skeleton
 logger = logging.getLogger(__name__)
 
 _TEXT_SUFFIXES = frozenset({".txt", ".md", ".csv", ""})
-_OFFICE_SUFFIXES = frozenset({".docx", ".pptx", ".doc", ".ppt"})
+_OFFICE_SUFFIXES = frozenset({".docx", ".pptx", ".xlsx"})
+_LEGACY_OFFICE_SUFFIXES = frozenset({".doc", ".ppt", ".xls"})
 _PDF_SUFFIX = ".pdf"
 _FILE_SEPARATOR = "\n\n---\n\n"
 
@@ -257,36 +259,63 @@ class RoutedDocumentParser:
     def parse_outcome(self, filename: str, data: bytes) -> ParseOutcome:
         suffix = Path(filename).suffix.lower()
         if suffix in _TEXT_SUFFIXES:
+            if suffix in {".txt", ".md"}:
+                from rag_api.domain.documents.file_type import (
+                    FileTypeError,
+                    validate_file_type,
+                )
+
+                try:
+                    validate_file_type(filename, data)
+                except FileTypeError as exc:
+                    raise ParseError(str(exc)) from exc
             outcome = ParseOutcome(text=_decode_text(data), route="text")
             self._log_route(filename, outcome.route, reason="text_suffix")
             return outcome
 
         if suffix == _PDF_SUFFIX:
+            from rag_api.domain.documents.file_type import FileTypeError, validate_file_type
+
+            try:
+                validate_file_type(filename, data)
+            except FileTypeError as exc:
+                raise ParseError(str(exc)) from exc
             return self._parse_pdf(filename, data)
 
-        if suffix in {".docx", ".pptx"}:
-            text, counts = self._structure_via_docling(filename, data)
-            outcome = ParseOutcome(
-                text=text,
-                route="docling",
-                skeleton=None,
-                block_counts=counts,
-            )
-            self._log_route(
-                filename,
-                outcome.route,
-                reason="office",
-                block_counts=counts,
-            )
-            return outcome
+        if suffix in _OFFICE_SUFFIXES:
+            return self._parse_office(filename, data)
 
-        if suffix in {".doc", ".ppt"}:
+        if suffix in _LEGACY_OFFICE_SUFFIXES:
             raise ParseError(f"Legacy Office format not supported: {suffix}")
 
         raise ParseError(f"Unsupported file type: {suffix or '(none)'}")
 
     def parse_to_markdown(self, filename: str, data: bytes) -> str:
         return self.parse_outcome(filename, data).text
+
+    def _parse_office(self, filename: str, data: bytes) -> ParseOutcome:
+        from rag_api.domain.documents.file_type import FileTypeError, validate_file_type
+        from rag_api.indexing.office import OfficeParseError, office_to_markdown
+
+        try:
+            validate_file_type(filename, data)
+        except FileTypeError as exc:
+            raise ParseError(str(exc)) from exc
+
+        suffix = Path(filename).suffix.lower()
+        route = suffix.lstrip(".")  # docx | pptx | xlsx
+        try:
+            text = office_to_markdown(filename, data)
+        except OfficeParseError as exc:
+            raise ParseError(str(exc)) from exc
+
+        outcome = ParseOutcome(
+            text=text,
+            route=route,
+            skeleton=None,
+        )
+        self._log_route(filename, outcome.route, reason="office_lightweight")
+        return outcome
 
     def _structure_via_docling(
         self, filename: str, data: bytes
