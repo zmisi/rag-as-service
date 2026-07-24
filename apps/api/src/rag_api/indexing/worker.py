@@ -14,6 +14,7 @@ from rag_api.config import get_settings
 from rag_api.db.models import Document, IndexJob
 from rag_api.domain.documents.constants import INDEX_JOB_ERROR_DUPLICATE_CONTENT_SHA256
 from rag_api.indexing.chunker import chunk_text
+from rag_api.indexing.clone_index import clone_document_index
 from rag_api.indexing.embedding import Embedder, get_embedder
 from rag_api.indexing.parse import DocumentParser, ParseError, parse_files_to_markdown
 from rag_api.indexing.sections import (
@@ -274,6 +275,92 @@ def _persist_sections_and_leaves(
     return leaf_count
 
 
+def reclaim_stuck_index_jobs(
+    db: Session,
+    *,
+    older_than_seconds: int | None = None,
+    tenant_id: UUID | None = None,
+) -> int:
+    """Reset long-running jobs back to pending so workers can retry."""
+    settings = get_settings()
+    seconds = (
+        older_than_seconds
+        if older_than_seconds is not None
+        else settings.index_job_stuck_after_seconds
+    )
+    params: dict[str, object] = {"seconds": int(seconds)}
+    tenant_clause = ""
+    if tenant_id is not None:
+        tenant_clause = "AND tenant_id = CAST(:tenant_id AS uuid)"
+        params["tenant_id"] = str(tenant_id)
+    result = db.execute(
+        text(
+            f"""
+            UPDATE rag_service.index_jobs
+            SET status = 'pending',
+                error = 'reclaimed: stuck running',
+                finished_at = NULL
+            WHERE status = 'running'
+              AND started_at IS NOT NULL
+              AND started_at < (now() AT TIME ZONE 'utc')
+                    - make_interval(secs => :seconds)
+              {tenant_clause}
+            """
+        ),
+        params,
+    )
+    db.commit()
+    return int(result.rowcount or 0)
+
+
+def claim_pending_index_jobs(
+    db: Session,
+    *,
+    limit: int = 20,
+    tenant_id: UUID | None = None,
+) -> list[UUID]:
+    """Claim pending jobs with ``FOR UPDATE SKIP LOCKED`` (multi-worker safe)."""
+    reclaim_stuck_index_jobs(db, tenant_id=tenant_id)
+
+    params: dict[str, object] = {"limit": int(limit)}
+    tenant_clause = ""
+    if tenant_id is not None:
+        tenant_clause = "AND tenant_id = CAST(:tenant_id AS uuid)"
+        params["tenant_id"] = str(tenant_id)
+
+    rows = db.execute(
+        text(
+            f"""
+            SELECT id
+            FROM rag_service.index_jobs
+            WHERE status = 'pending'
+              {tenant_clause}
+            ORDER BY create_at ASC
+            FOR UPDATE SKIP LOCKED
+            LIMIT :limit
+            """
+        ),
+        params,
+    ).fetchall()
+    ids = [UUID(str(r[0])) for r in rows]
+    if not ids:
+        db.commit()
+        return []
+
+    now = _now()
+    for job_id in ids:
+        job = db.get(IndexJob, job_id)
+        if job is None or job.status != "pending":
+            continue
+        job.status = "running"
+        job.started_at = now
+        job.attempt_count = int(job.attempt_count or 0) + 1
+        job.error = None
+        job.finished_at = None
+    db.commit()
+    return ids
+
+
 def process_index_job(
     db: Session,
     job_id: UUID,
@@ -281,16 +368,18 @@ def process_index_job(
     embedder: Embedder | None = None,
     storage: StorageService | None = None,
     parser: DocumentParser | None = None,
+    already_claimed: bool = False,
 ) -> IndexJob:
     job = db.get(IndexJob, job_id)
     if job is None:
         raise ValueError(f"index_job not found: {job_id}")
 
-    job.status = "running"
-    job.started_at = _now()
-    job.attempt_count = int(job.attempt_count or 0) + 1
-    job.error = None
-    db.commit()
+    if not already_claimed:
+        job.status = "running"
+        job.started_at = _now()
+        job.attempt_count = int(job.attempt_count or 0) + 1
+        job.error = None
+        db.commit()
 
     settings = get_settings()
     embedder = embedder or get_embedder()
@@ -320,7 +409,7 @@ def process_index_job(
         doc.error_message = None
         db.commit()
 
-        # Same-tenant content hash skip (ready duplicate elsewhere).
+        # Same-tenant content hash: clone index, skip re-embed.
         if doc.content_sha256:
             dup = db.scalar(
                 select(Document)
@@ -335,8 +424,17 @@ def process_index_job(
                 .limit(1)
             )
             if dup is not None:
+                clone_document_index(
+                    db,
+                    tenant_id=job.tenant_id,
+                    source_document_id=dup.doc_id,
+                    target_document_id=doc.doc_id,
+                )
                 doc.index_status = "ready"
                 doc.error_message = None
+                doc.embedding_provider = dup.embedding_provider
+                doc.embedding_model = dup.embedding_model
+                doc.embedding_dimension = dup.embedding_dimension
                 doc.is_latest = True
                 _mark_other_group_versions_not_latest(
                     db,
@@ -455,32 +553,27 @@ def process_pending_jobs(
     db: Session,
     *,
     limit: int = 20,
+    tenant_id: UUID | None = None,
     embedder: Embedder | None = None,
     storage: StorageService | None = None,
     parser: DocumentParser | None = None,
 ) -> list[IndexJob]:
-    jobs = list(
-        db.scalars(
-            select(IndexJob)
-            .where(IndexJob.status == "pending")
-            .order_by(IndexJob.create_at.asc())
-            .limit(limit)
-        ).all()
-    )
+    claimed = claim_pending_index_jobs(db, limit=limit, tenant_id=tenant_id)
     done: list[IndexJob] = []
-    for job in jobs:
+    for job_id in claimed:
         try:
             done.append(
                 process_index_job(
                     db,
-                    job.id,
+                    job_id,
                     embedder=embedder,
                     storage=storage,
                     parser=parser,
+                    already_claimed=True,
                 )
             )
         except Exception:  # noqa: BLE001 — continue queue
-            refreshed = db.get(IndexJob, job.id)
+            refreshed = db.get(IndexJob, job_id)
             if refreshed is not None:
                 done.append(refreshed)
     return done

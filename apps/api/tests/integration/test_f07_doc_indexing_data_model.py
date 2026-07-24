@@ -411,18 +411,30 @@ def test_f07_t07_new_version_flips_is_latest_and_search(
 
 
 @pytest.mark.integration
-def test_f07_t08_same_tenant_content_sha256_skip(client_a, db: Session, tenants: dict):
+def test_f07_t08_same_tenant_content_sha256_skip(
+    client_a, db: Session, tenants: dict
+):
     first = _create_upload_publish(client_a, HEADERS_A, title="First")
     doc1 = db.get(Document, first["id"])
     assert doc1 is not None
-    # Simulate successful index for first doc with known hash.
-    doc1.content_sha256 = content_sha256(TXT_BODY_DUP)
-    doc1.index_status = "ready"
-    doc1.is_latest = True
     job1 = db.scalar(select(IndexJob).where(IndexJob.doc_id == doc1.doc_id))
-    if job1:
-        job1.status = "succeeded"
-    db.commit()
+    assert job1 is not None
+
+    emb = HashingEmbedder()
+    parser = ScriptedDocumentParser(default=TXT_BODY.decode("utf-8"))
+    process_index_job(db, job1.id, embedder=emb, storage=StorageService(), parser=parser)
+    db.refresh(doc1)
+    assert doc1.index_status == "ready"
+    assert doc1.content_sha256 == content_sha256(TXT_BODY_DUP)
+    chunks1 = list(
+        db.scalars(
+            select(DocumentChunk).where(
+                DocumentChunk.doc_id == doc1.doc_id,
+                DocumentChunk.is_latest.is_(True),
+            )
+        ).all()
+    )
+    assert chunks1, "source doc must have chunks to clone"
 
     second = _create_upload_publish(client_a, HEADERS_A, title="Second")
     assert second.get("warning_code") == "duplicate_content_sha256"
@@ -445,6 +457,22 @@ def test_f07_t08_same_tenant_content_sha256_skip(client_a, db: Session, tenants:
     assert status.status_code == 200
     assert status.json()["warning_code"] == "duplicate_content_sha256"
     assert status.json()["warning"]
+
+    chunks2 = list(
+        db.scalars(
+            select(DocumentChunk).where(
+                DocumentChunk.doc_id == doc2.doc_id,
+                DocumentChunk.is_latest.is_(True),
+            )
+        ).all()
+    )
+    assert len(chunks2) == len(chunks1)
+    assert {c.chunk_id for c in chunks2}.isdisjoint({c.chunk_id for c in chunks1})
+
+    searcher = PgKnowledgeSearcher(lambda: db, embedder=emb)
+    hits = searcher.search(tenants["tenant_a"].tenant_id, "UNIQUE_F07_PHRASE", top_k=10)
+    hit_doc_ids = {h.document_id for h in hits}
+    assert str(doc2.doc_id) in hit_doc_ids
 
 
 @pytest.mark.integration

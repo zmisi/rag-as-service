@@ -37,13 +37,15 @@ FILE_TYPE_MISMATCH_MESSAGE = (
 )
 
 # Same-tenant content hash skip (publish / index worker).
+# Skip re-parse / re-embed, but clone section/chunk rows onto the new doc_id
+# so search (chunk-centric) still hits the published duplicate.
 WARNING_CODE_DUPLICATE_CONTENT_SHA256 = "duplicate_content_sha256"
 WARNING_DUPLICATE_CONTENT_SHA256 = (
-    "同租户已存在相同内容且已索引完成的文档，本次已跳过重复切块与 embedding；"
-    "发布成功，检索将沿用已有索引。"
+    "同租户已存在相同内容且已索引完成的文档，本次已跳过重复切块与 embedding，"
+    "并复制已有索引到本文档；发布成功，可正常检索。"
 )
 INDEX_JOB_ERROR_DUPLICATE_CONTENT_SHA256 = (
-    "skipped: duplicate content_sha256 in tenant"
+    "skipped: duplicate content_sha256 in tenant (index cloned)"
 )
 
 

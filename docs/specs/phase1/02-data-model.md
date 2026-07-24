@@ -281,7 +281,7 @@ erDiagram
 | `doc_name` | `text` | NOT NULL DEFAULT '' | 标题（原 `title`）；submit-for-review 时必填非空 |
 | `doc_tag` | `text` | NOT NULL DEFAULT '' | 分类：`news`/`sop`/`best_practice`/`knowledge_base`/`faq`（原 `tag`） |
 | `doc_group_id` | `uuid` | NOT NULL | 逻辑文档组 ID；首次创建时生成；同组共享 |
-| `content_sha256` | `text` | NULL | 本版本源内容哈希；同租户同 hash 且已 `ready` 可跳过冗余索引 |
+| `content_sha256` | `text` | NULL | 本版本源内容哈希；同租户同 hash 且已 `ready` 可跳过冗余 parse/embedding，并克隆索引行到本 `doc_id` |
 | `publish_status` | `text` | NOT NULL | F03 发布态：`draft`→`review`→`published`（**不**改名为笼统 `status`；API 可短期别名） |
 | `index_status` | `text` | NOT NULL | F04 索引态：`pending`/`processing`/`ready`/`failed` |
 | `error_message` | `text` | NULL | 仅索引失败原因；成功为 NULL |

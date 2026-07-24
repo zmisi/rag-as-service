@@ -73,7 +73,20 @@ class Settings(BaseSettings):
     chunk_target_tokens: int = Field(default=800, alias="CHUNK_TARGET_TOKENS")
     chunk_overlap_tokens: int = Field(default=100, alias="CHUNK_OVERLAP_TOKENS")
     # F04: process index_job inline after publish (convenient for local e2e).
-    index_sync_on_publish: bool = Field(default=True, alias="INDEX_SYNC_ON_PUBLISH")
+    # Prefer false when a dedicated index worker process is running.
+    index_sync_on_publish: bool = Field(default=False, alias="INDEX_SYNC_ON_PUBLISH")
+    index_worker_poll_interval_seconds: float = Field(
+        default=2.0,
+        alias="INDEX_WORKER_POLL_INTERVAL_SECONDS",
+    )
+    index_worker_batch_size: int = Field(default=5, alias="INDEX_WORKER_BATCH_SIZE")
+    index_job_stuck_after_seconds: int = Field(
+        default=1800,
+        alias="INDEX_JOB_STUCK_AFTER_SECONDS",
+    )
+    # When set (and matches proxy), API trusts X-Forwarded-Host from the proxy.
+    # Empty = never trust client/proxy XFH; use Host only (tests set Host directly).
+    proxy_shared_secret: str = Field(default="", alias="PROXY_SHARED_SECRET")
     # F04 PDF PyMuPDF fast-path quality gate (conservative defaults).
     pdf_fast_min_chars: int = Field(default=80, alias="PDF_FAST_MIN_CHARS")
     pdf_fast_min_chars_per_page: float = Field(

@@ -22,6 +22,7 @@ from rag_api.domain.documents.constants import (
     next_version,
 )
 from rag_api.domain.documents.file_type import FileTypeError, validate_file_type
+from rag_api.indexing.clone_index import clone_document_index
 from rag_api.indexing.worker import mark_document_index_not_latest, process_index_job
 from rag_api.services.storage_service import StorageService
 
@@ -284,8 +285,17 @@ def publish_document(
         exclude_id=doc.doc_id,
     )
     if dup is not None:
+        clone_document_index(
+            db,
+            tenant_id=tenant_id,
+            source_document_id=dup.doc_id,
+            target_document_id=doc.doc_id,
+        )
         doc.index_status = "ready"
         doc.is_latest = True
+        doc.embedding_provider = dup.embedding_provider
+        doc.embedding_model = dup.embedding_model
+        doc.embedding_dimension = dup.embedding_dimension
         # Keep other versions in this group from being listed as latest.
         others = list(
             db.scalars(

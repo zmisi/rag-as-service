@@ -16,9 +16,6 @@ export default function AdminPage() {
       try {
         const response = await fetch(backendUrl("/api/v1/auth/me"), {
           credentials: "include",
-          headers: {
-            "X-Forwarded-Host": window.location.host,
-          },
         });
         if (response.status === 401 || response.status === 403) {
           window.location.href = resolveMainSiteUrl("/login");

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 import re
 from dataclasses import dataclass
 from uuid import UUID
@@ -19,6 +20,7 @@ _HOST_SUBDOMAIN_RE = re.compile(
     r"^(?P<subdomain>[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?)\.lxzxai\.com(?::\d+)?$",
     re.IGNORECASE,
 )
+_PROXY_SECRET_HEADER = "X-Rag-Proxy-Secret"
 
 
 @dataclass(frozen=True)
@@ -29,12 +31,8 @@ class AuthContext:
     subdomain: str
 
 
-def _raw_host(
-    request: Request,
-    host: str | None,
-    x_forwarded_host: str | None,
-) -> str:
-    return x_forwarded_host or host or request.headers.get("host") or ""
+def hostname_from_host_header(host_header: str) -> str:
+    return host_header.split(":")[0].lower()
 
 
 def parse_subdomain(host: str | None) -> str | None:
@@ -47,8 +45,60 @@ def parse_subdomain(host: str | None) -> str | None:
     return match.group("subdomain").lower()
 
 
-def hostname_from_host_header(host_header: str) -> str:
-    return host_header.split(":")[0].lower()
+def is_public_hostname(host_header: str, settings: Settings) -> bool:
+    hostname = hostname_from_host_header(host_header.split(",")[0].strip())
+    if hostname == settings.apex_host.lower():
+        return True
+    return parse_subdomain(host_header) is not None
+
+
+def _proxy_secret_ok(request: Request, settings: Settings) -> bool:
+    expected = (settings.proxy_shared_secret or "").strip()
+    if not expected:
+        return False
+    provided = (request.headers.get(_PROXY_SECRET_HEADER) or "").strip()
+    if not provided:
+        return False
+    return hmac.compare_digest(provided, expected)
+
+
+def resolve_public_host(
+    request: Request,
+    *,
+    host: str | None,
+    x_forwarded_host: str | None,
+    settings: Settings,
+) -> str:
+    """Resolve browser-facing Host.
+
+    Prefer a public ``Host`` (apex / tenant subdomain). Only trust
+    ``X-Forwarded-Host`` when the request carries a matching proxy shared secret
+    (set by Next BFF / Caddy — never by the browser).
+    """
+    host_val = (host or request.headers.get("host") or "").split(",")[0].strip()
+    if host_val and is_public_hostname(host_val, settings):
+        return host_val
+
+    xfh = (x_forwarded_host or "").split(",")[0].strip()
+    if xfh and _proxy_secret_ok(request, settings):
+        return xfh
+
+    return host_val
+
+
+def _raw_host(
+    request: Request,
+    host: str | None,
+    x_forwarded_host: str | None,
+    settings: Settings | None = None,
+) -> str:
+    settings = settings or get_settings()
+    return resolve_public_host(
+        request,
+        host=host,
+        x_forwarded_host=x_forwarded_host,
+        settings=settings,
+    )
 
 
 def require_known_host(
@@ -57,7 +107,7 @@ def require_known_host(
     host: str | None = Header(default=None, alias="Host"),
     x_forwarded_host: str | None = Header(default=None, alias="X-Forwarded-Host"),
 ) -> None:
-    host_header = _raw_host(request, host, x_forwarded_host)
+    host_header = _raw_host(request, host, x_forwarded_host, settings)
     hostname = hostname_from_host_header(host_header.split(",")[0].strip())
     if hostname == settings.apex_host.lower():
         return
@@ -69,12 +119,13 @@ def require_known_host(
 def get_current_tenant(
     request: Request,
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
     host: str | None = Header(default=None, alias="Host"),
     x_forwarded_host: str | None = Header(default=None, alias="X-Forwarded-Host"),
 ) -> Tenant:
     from rag_api.db.models.tenant import TENANT_STATUS_ACTIVE
 
-    raw_host = _raw_host(request, host, x_forwarded_host)
+    raw_host = _raw_host(request, host, x_forwarded_host, settings)
     subdomain = parse_subdomain(raw_host)
     if subdomain is None:
         raise HTTPException(status_code=404, detail="Unknown host")
