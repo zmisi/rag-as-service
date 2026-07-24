@@ -10,7 +10,7 @@
 | **Approved by** | team |
 | **Approved at** | 2026-07-21 |
 
-> **数据模型依赖**：列名与版本行语义以 [02-data-model.md](../02-data-model.md) 与 [F07-doc-indexing-data-model.md](F07-doc-indexing-data-model.md) 为准（`publish_status`、`document_group_id`、`version` int、`is_latest`）。本 Feature 行为仍有效；持久化重构由 F07 验收。
+> **数据模型依赖**：列名与版本行语义以 [02-data-model.md](../02-data-model.md)、[F07](F07-doc-indexing-data-model.md)、[F08](F08-data-model-naming-refactor.md) 为准（`publish_status`、`doc_group_id`、`version_number`、`doc_id`/`doc_name`/`doc_tag`、`is_latest`）。本 Feature 行为仍有效。
 
 ## 范围
 
@@ -156,7 +156,8 @@ Phase 1 的「审核/校验」= **自动结构校验**（title、tag、文件）
 |------|----------|----------|------|
 | 3.1 | 点「发布」 | 弹出 confirm：版本展示 `v{N}`、tag、文件数、索引提示 | 仅 `review` 可点 |
 | 3.2 | confirm 取消 | 无变更 | — |
-| 3.3 | confirm 确认 | `publish_status` → `published`；首次 `version=1`（展示 `v1`）；`index_status=pending`；写入 index_job（F04） | F03-T05 |
+| 3.3 | confirm 确认 | `publish_status` → `published`；首次 `version=1`（展示 `v1`）；通常 `index_status=pending` 并写入 index_job（F04） | F03-T05 |
+| 3.3a | 同租户内容去重 | 若同租户已有相同 `content_sha256` 且对方 `index_status=ready` + `is_latest` + 未删：仍 `published`，但 **跳过** 本版切块/embedding；`index_status=ready`；HTTP **200**；响应含 `warning_code=duplicate_content_sha256` 与面向用户的 `warning` 文案 | F07-T08 |
 | 3.4 | 发布成功 | Stepper 到 Published；展示索引状态区（`index_status`：pending → processing → ready/failed；job 队列态可并行展示） | — |
 
 **发布后**：
@@ -231,7 +232,7 @@ sequenceDiagram
 2. 发布态只允许按序前进：`draft → review → published`；禁止跳步（如 draft 直接 publish）。列名为 **`publish_status`**（API 可暂用 `status` 别名）。
 3. **Save（草稿）**：持久化标题、tag、`folder_path`、文件（或正文）；**`publish_status` 保持 `draft`**。Phase 1 不强制 title/tag/文件齐全。
 4. **Submit for Review**：仅 `draft` 可提交；检查必填项（title、tag、至少一份源文件）；通过 → `review`。Phase 1 不做 SOP 语义校验；Phase 2 在此步或 publish 前增加 SOP 门禁。
-5. **Publish**：仅 `review` 可 publish → `published`；成功后必须触发索引（F04），版本行 `index_status=pending`。
+5. **Publish**：仅 `review` 可 publish → `published`；成功后必须触发索引（F04），版本行 `index_status=pending`。若同租户已有相同 `content_sha256` 的 ready latest（未删），则跳过冗余索引：`index_status=ready`，HTTP 仍为 **200**，响应额外返回 `warning_code`（`duplicate_content_sha256`）与 `warning`（中文提醒）；**不得**静默成功而无提示。
 6. Tag 为受控枚举（存储值 → 界面展示名）：`news` 公告动态 | `sop` 标准操作规程 | `best_practice` 最佳实践 | `knowledge_base` 知识库 | `faq` 常见问题。填写说明见 [F03-doc-admin-ui.md](F03-doc-admin-ui.md) §字段中文说明。
 7. **版本**：整数列 `version`；首次创建/首版为 **1**（展示 **`v1`**）；此后每次从已发布再编辑并重新走完发布流，同组 `version` **+1**（如 1→2，展示 `v2`）。**不用** text `1.0` / minor+0.1。
 8. 允许扩展名仅 `.txt` / `.pdf` / `.docx` / `.pptx`；拒绝其它类型（含 `.exe`）及旧版 `.doc` / `.ppt`（须提示另存为 OOXML）；单文件大小上限 **20MB**。
@@ -245,7 +246,7 @@ sequenceDiagram
 
 | 实体 | 关键字段 / 约束 |
 |------|----------------|
-| document（版本行） | `id`（版本 PK）, `tenant_id`, `document_group_id`, `version`（int）, `is_latest`, `title`, `tag`, `publish_status`, `index_status`, `folder_path`（可选）, `created_by`, `deleted_at` |
+| document（版本行） | `doc_id`（版本 PK）, `tenant_id`, `doc_group_id`, `version_number`（int）, `is_latest`, `doc_name`, `doc_tag`, `publish_status`, `index_status`, `doc_size`, `source_metadata`, `folder_path`（可选）, `created_by`, `deleted_at` |
 | document_file | `document_id`（→ 版本行）, `version`（int）, `storage_key`, `filename`, `content_type`, `size_bytes` |
 | publish_status | `draft` \| `review` \| `published`（API 过渡期响应字段可仍名 `status`） |
 | index_status | `pending` \| `processing` \| `ready` \| `failed`（由 F04 推进；Admin 只读展示） |

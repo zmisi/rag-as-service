@@ -21,7 +21,7 @@ class Message(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=False,
     )
     tenant_id: Mapped[UUID] = mapped_column(
-        ForeignKey(f"{RAG_SCHEMA}.tenants.id", ondelete="CASCADE"),
+        ForeignKey(f"{RAG_SCHEMA}.tenants.tenant_id", ondelete="CASCADE"),
         nullable=False,
     )
     role: Mapped[str] = mapped_column(Text, nullable=False)

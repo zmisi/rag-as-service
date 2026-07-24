@@ -149,8 +149,8 @@ class PgKnowledgeSearcher:
                 text(
                     """
                     SELECT
-                      c.id::text AS chunk_id,
-                      c.document_id::text AS document_id,
+                      c.chunk_id::text AS chunk_id,
+                      c.doc_id::text AS document_id,
                       c.section_id::text AS section_id,
                       s.path AS path,
                       s.content AS content,
@@ -161,7 +161,7 @@ class PgKnowledgeSearcher:
                      AND s.tenant_id = c.tenant_id
                      AND s.is_latest = true
                     INNER JOIN rag_service.documents d
-                      ON d.id = c.document_id
+                      ON d.doc_id = c.doc_id
                      AND d.tenant_id = c.tenant_id
                     WHERE c.tenant_id = CAST(:tenant_id AS uuid)
                       AND c.is_latest = true

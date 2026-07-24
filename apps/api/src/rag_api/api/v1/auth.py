@@ -172,25 +172,25 @@ def auth_me(
     raw_host = _host_header(request)
     subdomain = parse_subdomain(raw_host)
     if subdomain is None:
-        return MeResponse(user_id=str(user.id), email=user.email)
+        return MeResponse(user_id=str(user.user_id), email=user.email)
 
-    tenant = db.scalar(select(Tenant).where(Tenant.subdomain == subdomain))
+    tenant = db.scalar(select(Tenant).where(Tenant.tenant_name == subdomain))
     if tenant is None:
         raise HTTPException(status_code=404, detail="Unknown tenant")
 
     member = db.scalar(
         select(TenantMember).where(
-            TenantMember.tenant_id == tenant.id,
-            TenantMember.user_id == user.id,
+            TenantMember.tenant_id == tenant.tenant_id,
+            TenantMember.user_id == user.user_id,
         )
     )
     if member is None:
         raise HTTPException(status_code=403, detail="Not a tenant member")
 
     return MeResponse(
-        user_id=str(user.id),
+        user_id=str(user.user_id),
         email=user.email,
-        tenant_id=str(tenant.id),
-        subdomain=tenant.subdomain,
+        tenant_id=str(tenant.tenant_id),
+        subdomain=tenant.tenant_name,
         role=member.role,
     )

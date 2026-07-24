@@ -1,4 +1,5 @@
 import logging
+import re
 from dataclasses import dataclass
 
 from rag_api.config import Settings, get_settings
@@ -6,7 +7,7 @@ from rag_api.core.exceptions import RegistrationError, registration_error_from_d
 from rag_api.domain.errors import DomainValidationError
 from rag_api.domain.identity.email import normalize_email
 from rag_api.domain.identity.password import hash_password
-from rag_api.domain.tenancy.subdomain import validate_subdomain
+from rag_api.domain.tenancy.subdomain import validate_tenant_name
 from rag_api.repositories.registration_repository import RegistrationRepository
 from rag_api.repositories.tenant_repository import TenantRepository
 from rag_api.repositories.user_repository import UserRepository
@@ -16,12 +17,31 @@ from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
+_USER_NAME_SAFE = re.compile(r"[^a-z0-9_-]+")
+
+
+def derive_user_name(email: str, explicit: str | None = None) -> str:
+    """Build a unique-ish user_name from request or email local-part."""
+    if explicit and explicit.strip():
+        raw = explicit.strip().lower()
+    else:
+        raw = email.split("@", 1)[0].lower()
+    cleaned = _USER_NAME_SAFE.sub("", raw).strip("-_")
+    if len(cleaned) < 3:
+        cleaned = (cleaned + "user")[:32]
+    return cleaned[:32]
+
 
 @dataclass(frozen=True, slots=True)
 class RegistrationOutcome:
-    subdomain: str
+    tenant_name: str
     session: SessionIssueResult
     redirect_url: str
+
+    @property
+    def subdomain(self) -> str:
+        """Deprecated alias for tenant_name."""
+        return self.tenant_name
 
 
 class RegistrationService:
@@ -37,18 +57,34 @@ class RegistrationService:
         self._registration = RegistrationRepository(db_session)
         self._sessions = SessionService(db_session, self._settings)
 
-    def register(self, email: str, password: str, subdomain: str) -> RegistrationOutcome:
+    def register(
+        self,
+        email: str,
+        password: str,
+        tenant_name: str | None = None,
+        *,
+        subdomain: str | None = None,
+        user_name: str | None = None,
+    ) -> RegistrationOutcome:
+        raw_tenant = tenant_name if tenant_name is not None else subdomain
+        if raw_tenant is None:
+            raise RegistrationError("invalid_format", "tenant_name is required", 400)
         try:
             normalized_email = normalize_email(email)
-            normalized_subdomain = validate_subdomain(subdomain)
+            normalized_tenant = validate_tenant_name(raw_tenant)
         except DomainValidationError as exc:
             logger.info(
                 "registration_validation_failed",
-                extra={"reason": exc.code, "email": email, "subdomain": subdomain},
+                extra={
+                    "reason": exc.code,
+                    "email": email,
+                    "tenant_name": raw_tenant,
+                },
             )
             raise registration_error_from_domain(exc) from exc
 
         password_hash = hash_password(password)
+        desired_user_name = derive_user_name(normalized_email, user_name)
 
         if self._users.find_by_email(normalized_email):
             logger.info(
@@ -57,42 +93,56 @@ class RegistrationService:
             )
             raise RegistrationError("email_taken", "email already registered", 409)
 
-        if self._tenants.find_by_subdomain(normalized_subdomain):
+        if self._tenants.find_by_tenant_name(normalized_tenant):
             logger.info(
-                "registration_failed_subdomain_taken",
-                extra={"subdomain": normalized_subdomain},
+                "registration_failed_tenant_name_taken",
+                extra={"tenant_name": normalized_tenant},
             )
-            raise RegistrationError("subdomain_taken", "subdomain already taken", 409)
+            raise RegistrationError(
+                "tenant_name_taken", "tenant_name already taken", 409
+            )
+
+        # Ensure user_name uniqueness with numeric suffixes
+        candidate = desired_user_name
+        suffix = 0
+        while self._users.find_by_user_name(candidate):
+            suffix += 1
+            base = desired_user_name[: max(1, 32 - len(str(suffix)) - 1)]
+            candidate = f"{base}_{suffix}"
 
         try:
             result = self._registration.register_owner(
                 email=normalized_email,
                 password_hash=password_hash,
-                subdomain=normalized_subdomain,
+                tenant_name=normalized_tenant,
+                user_name=candidate,
             )
-            session_issue = self._sessions.create_session(result.user.id)
+            session_issue = self._sessions.create_session(result.user.user_id)
             self._session.commit()
         except IntegrityError as exc:
             self._session.rollback()
             logger.info(
                 "registration_failed_integrity",
-                extra={"email": normalized_email, "subdomain": normalized_subdomain},
+                extra={
+                    "email": normalized_email,
+                    "tenant_name": normalized_tenant,
+                },
             )
             raise _map_integrity_error(exc) from exc
 
         redirect_url = (
-            f"https://{normalized_subdomain}.{self._settings.apex_host}/admin"
+            f"https://{normalized_tenant}.{self._settings.apex_host}/admin"
         )
         logger.info(
             "registration_success",
             extra={
-                "user_id": str(result.user.id),
-                "tenant_id": str(result.tenant.id),
-                "subdomain": normalized_subdomain,
+                "user_id": str(result.user.user_id),
+                "tenant_id": str(result.tenant.tenant_id),
+                "tenant_name": normalized_tenant,
             },
         )
         return RegistrationOutcome(
-            subdomain=normalized_subdomain,
+            tenant_name=normalized_tenant,
             session=session_issue,
             redirect_url=redirect_url,
         )
@@ -100,8 +150,16 @@ class RegistrationService:
 
 def _map_integrity_error(exc: IntegrityError) -> RegistrationError:
     detail = str(exc.orig).lower()
-    if "users_email_key" in detail or "email" in detail:
+    if "uk_users_email" in detail or "users_email" in detail or "email" in detail:
         return RegistrationError("email_taken", "email already registered", 409)
-    if "tenants_subdomain_key" in detail or "subdomain" in detail:
-        return RegistrationError("subdomain_taken", "subdomain already taken", 409)
+    if (
+        "uk_tenants_tenant_name" in detail
+        or "tenant_name" in detail
+        or "subdomain" in detail
+    ):
+        return RegistrationError(
+            "tenant_name_taken", "tenant_name already taken", 409
+        )
+    if "uk_users_user_name" in detail or "user_name" in detail:
+        return RegistrationError("user_name_taken", "user_name already taken", 409)
     return RegistrationError("conflict", "registration conflict", 409)

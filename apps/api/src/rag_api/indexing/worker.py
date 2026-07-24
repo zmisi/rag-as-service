@@ -12,10 +12,15 @@ from sqlalchemy.orm import Session, selectinload
 
 from rag_api.config import get_settings
 from rag_api.db.models import Document, IndexJob
+from rag_api.domain.documents.constants import INDEX_JOB_ERROR_DUPLICATE_CONTENT_SHA256
 from rag_api.indexing.chunker import chunk_text
 from rag_api.indexing.embedding import Embedder, get_embedder
 from rag_api.indexing.parse import DocumentParser, ParseError, parse_files_to_markdown
-from rag_api.indexing.sections import SectionDraft, build_section_tree
+from rag_api.indexing.sections import (
+    SectionDraft,
+    build_section_tree,
+    infer_chunk_type,
+)
 from rag_api.services.storage_service import StorageService
 
 logger = logging.getLogger(__name__)
@@ -32,6 +37,18 @@ def _vector_literal(vec: list[float]) -> str:
 def _heading_path(path: str) -> list[str]:
     parts = [p.strip() for p in (path or "").split(" > ") if p.strip()]
     return parts
+
+
+def build_embedding_text(heading_path: list[str], content: str) -> str:
+    """Text sent to the embedder: path context + leaf body (industry practice)."""
+    body = (content or "").strip()
+    parts = [p.strip() for p in heading_path if p and str(p).strip()]
+    if not parts:
+        return body
+    prefix = " > ".join(parts)
+    if not body:
+        return prefix
+    return f"{prefix}\n\n{body}"
 
 
 def _pg_text_array_literal(parts: list[str]) -> str:
@@ -58,7 +75,7 @@ def mark_chunks_not_latest(
             UPDATE rag_service.document_chunks
             SET is_latest = false
             WHERE tenant_id = :tenant_id
-              AND document_id = :document_id
+              AND doc_id = :document_id
               AND is_latest = true
             """
         ),
@@ -79,7 +96,7 @@ def mark_sections_not_latest(
             UPDATE rag_service.document_sections
             SET is_latest = false
             WHERE tenant_id = :tenant_id
-              AND document_id = :document_id
+              AND doc_id = :document_id
               AND is_latest = true
             """
         ),
@@ -108,22 +125,22 @@ def _mark_other_group_versions_not_latest(
     db: Session,
     *,
     tenant_id: UUID,
-    document_group_id: UUID,
+    doc_group_id: UUID,
     keep_document_id: UUID,
 ) -> None:
     others = list(
         db.scalars(
             select(Document).where(
                 Document.tenant_id == tenant_id,
-                Document.document_group_id == document_group_id,
-                Document.id != keep_document_id,
+                Document.doc_group_id == doc_group_id,
+                Document.doc_id != keep_document_id,
             )
         ).all()
     )
     for other in others:
         other.is_latest = False
         mark_document_index_not_latest(
-            db, tenant_id=tenant_id, document_id=other.id
+            db, tenant_id=tenant_id, document_id=other.doc_id
         )
 
 
@@ -152,7 +169,7 @@ def _persist_sections_and_leaves(
             text(
                 """
                 INSERT INTO rag_service.document_sections
-                  (id, tenant_id, document_id, parent_id, level, title, path,
+                  (id, tenant_id, doc_id, parent_id, level, title, path,
                    content, section_index, is_latest)
                 VALUES
                   (
@@ -196,15 +213,19 @@ def _persist_sections_and_leaves(
     if not all_leaf_texts:
         return 0
 
-    vectors = embedder.embed([t[1] for t in all_leaf_texts])
-    for (section_id, content, heading), vec in zip(
-        all_leaf_texts, vectors, strict=True
+    embed_inputs = [
+        build_embedding_text(heading, content)
+        for _section_id, content, heading in all_leaf_texts
+    ]
+    vectors = embedder.embed(embed_inputs)
+    for (section_id, content, heading), emb_text, vec in zip(
+        all_leaf_texts, embed_inputs, vectors, strict=True
     ):
         db.execute(
             text(
                 """
                 INSERT INTO rag_service.document_chunks
-                  (id, tenant_id, document_id, section_id, chunk_index, heading_path,
+                  (chunk_id, tenant_id, doc_id, section_id, chunk_index, heading_path,
                    content, embedding_text, chunk_type, content_hash, embedding,
                    metadata_, is_latest)
                 VALUES
@@ -217,7 +238,7 @@ def _persist_sections_and_leaves(
                     CAST(:heading_path AS text[]),
                     :content,
                     :embedding_text,
-                    'text',
+                    :chunk_type,
                     :content_hash,
                     CAST(:embedding AS vector),
                     '{}'::jsonb,
@@ -233,7 +254,8 @@ def _persist_sections_and_leaves(
                 "chunk_index": chunk_index,
                 "heading_path": _pg_text_array_literal(heading),
                 "content": content,
-                "embedding_text": content,
+                "embedding_text": emb_text,
+                "chunk_type": infer_chunk_type(content),
                 "content_hash": _sha256_text(content),
                 "embedding": _vector_literal(vec),
             },
@@ -268,7 +290,7 @@ def process_index_job(
     try:
         doc = db.scalar(
             select(Document)
-            .where(Document.id == job.document_id, Document.tenant_id == job.tenant_id)
+            .where(Document.doc_id == job.doc_id, Document.tenant_id == job.tenant_id)
             .options(selectinload(Document.files))
         )
         if doc is None:
@@ -276,7 +298,7 @@ def process_index_job(
 
         if doc.publish_status != "published" or doc.deleted_at is not None:
             mark_document_index_not_latest(
-                db, tenant_id=job.tenant_id, document_id=job.document_id
+                db, tenant_id=job.tenant_id, document_id=job.doc_id
             )
             job.status = "succeeded"
             job.finished_at = _now()
@@ -299,7 +321,7 @@ def process_index_job(
                     Document.index_status == "ready",
                     Document.is_latest.is_(True),
                     Document.deleted_at.is_(None),
-                    Document.id != doc.id,
+                    Document.doc_id != doc.doc_id,
                 )
                 .limit(1)
             )
@@ -310,12 +332,12 @@ def process_index_job(
                 _mark_other_group_versions_not_latest(
                     db,
                     tenant_id=job.tenant_id,
-                    document_group_id=doc.document_group_id,
-                    keep_document_id=doc.id,
+                    doc_group_id=doc.doc_group_id,
+                    keep_document_id=doc.doc_id,
                 )
                 job.status = "succeeded"
                 job.finished_at = _now()
-                job.error = "skipped: duplicate content_sha256 in tenant"
+                job.error = INDEX_JOB_ERROR_DUPLICATE_CONTENT_SHA256
                 db.commit()
                 db.refresh(job)
                 return job
@@ -332,34 +354,34 @@ def process_index_job(
             payloads.append((f.filename, raw))
 
         markdown = parse_files_to_markdown(payloads, parser=parser)
-        title_fallback = (doc.title or "").strip() or (
+        title_fallback = (doc.doc_name or "").strip() or (
             files[0].filename if files else "文档"
         )
         drafts = build_section_tree(markdown, title_fallback=title_fallback)
 
         # Clear any prior index rows for this version document_id before rewrite.
         mark_document_index_not_latest(
-            db, tenant_id=job.tenant_id, document_id=job.document_id
+            db, tenant_id=job.tenant_id, document_id=job.doc_id
         )
         db.execute(
             text(
                 """
                 DELETE FROM rag_service.document_chunks
                 WHERE tenant_id = CAST(:tenant_id AS uuid)
-                  AND document_id = CAST(:document_id AS uuid)
+                  AND doc_id = CAST(:document_id AS uuid)
                 """
             ),
-            {"tenant_id": str(job.tenant_id), "document_id": str(job.document_id)},
+            {"tenant_id": str(job.tenant_id), "document_id": str(job.doc_id)},
         )
         db.execute(
             text(
                 """
                 DELETE FROM rag_service.document_sections
                 WHERE tenant_id = CAST(:tenant_id AS uuid)
-                  AND document_id = CAST(:document_id AS uuid)
+                  AND doc_id = CAST(:document_id AS uuid)
                 """
             ),
-            {"tenant_id": str(job.tenant_id), "document_id": str(job.document_id)},
+            {"tenant_id": str(job.tenant_id), "document_id": str(job.doc_id)},
         )
 
         leaf_count = 0
@@ -367,7 +389,7 @@ def process_index_job(
             leaf_count = _persist_sections_and_leaves(
                 db,
                 tenant_id=job.tenant_id,
-                document_id=job.document_id,
+                document_id=job.doc_id,
                 drafts=drafts,
                 embedder=embedder,
                 target_tokens=settings.chunk_target_tokens,
@@ -385,8 +407,8 @@ def process_index_job(
         _mark_other_group_versions_not_latest(
             db,
             tenant_id=job.tenant_id,
-            document_group_id=doc.document_group_id,
-            keep_document_id=doc.id,
+            doc_group_id=doc.doc_group_id,
+            keep_document_id=doc.doc_id,
         )
 
         job.status = "succeeded"
@@ -396,7 +418,7 @@ def process_index_job(
         logger.info(
             "index_job succeeded id=%s document_id=%s version=%s sections=%s leaves=%s",
             job.id,
-            job.document_id,
+            job.doc_id,
             job.version,
             len(drafts),
             leaf_count,
@@ -409,7 +431,7 @@ def process_index_job(
             job.status = "failed"
             job.finished_at = _now()
             job.error = str(exc)[:2000]
-            doc = db.get(Document, job.document_id)
+            doc = db.get(Document, job.doc_id)
             if doc is not None and doc.tenant_id == job.tenant_id:
                 doc.index_status = "failed"
                 doc.error_message = str(exc)[:2000]

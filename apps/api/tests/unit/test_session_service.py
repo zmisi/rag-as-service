@@ -18,12 +18,13 @@ def test_create_session_persists_hashed_token(db_session: Session):
         result = RegistrationRepository(db_session).register_owner(
             email=f"session-{suffix}@example.com",
             password_hash="hash",
-            subdomain=f"sess-{suffix}",
+            user_name='u' + __import__('uuid').uuid4().hex[:10],
+            tenant_name=f"sess-{suffix}",
         )
-        issue = SessionService(db_session).create_session(result.user.id)
+        issue = SessionService(db_session).create_session(result.user.user_id)
 
     assert issue.token
-    assert issue.session.user_id == result.user.id
+    assert issue.session.user_id == result.user.user_id
     assert issue.session.token_hash != issue.token
 
 
@@ -42,14 +43,15 @@ def test_validate_session_returns_user(db_session: Session):
         result = RegistrationRepository(db_session).register_owner(
             email=f"valid-{suffix}@example.com",
             password_hash="hash",
-            subdomain=f"valid-{suffix}",
+            user_name='u' + __import__('uuid').uuid4().hex[:10],
+            tenant_name=f"valid-{suffix}",
         )
-        issue = SessionService(db_session).create_session(result.user.id)
+        issue = SessionService(db_session).create_session(result.user.user_id)
 
     service = SessionService(db_session)
     validated = service.validate_session(issue.token)
     assert validated is not None
-    assert validated.user.id == result.user.id
+    assert validated.user.user_id == result.user.user_id
 
 
 @pytest.mark.integration
@@ -59,9 +61,10 @@ def test_revoke_session_invalidates_token(db_session: Session):
         result = RegistrationRepository(db_session).register_owner(
             email=f"revoke-{suffix}@example.com",
             password_hash="hash",
-            subdomain=f"revoke-{suffix}",
+            user_name='u' + __import__('uuid').uuid4().hex[:10],
+            tenant_name=f"revoke-{suffix}",
         )
-        issue = SessionService(db_session).create_session(result.user.id)
+        issue = SessionService(db_session).create_session(result.user.user_id)
 
     service = SessionService(db_session)
     assert service.revoke_session(issue.token) is True
@@ -76,9 +79,10 @@ def test_slide_expiry_extends_session(db_session: Session):
         result = RegistrationRepository(db_session).register_owner(
             email=f"slide-{suffix}@example.com",
             password_hash="hash",
-            subdomain=f"slide-{suffix}",
+            user_name='u' + __import__('uuid').uuid4().hex[:10],
+            tenant_name=f"slide-{suffix}",
         )
-        issue = SessionService(db_session).create_session(result.user.id)
+        issue = SessionService(db_session).create_session(result.user.user_id)
 
     repo = SessionRepository(db_session)
     old_expires = datetime.utcnow() + timedelta(days=1)
@@ -102,9 +106,10 @@ def test_find_valid_by_token_hash(db_session: Session):
         result = RegistrationRepository(db_session).register_owner(
             email=f"find-{suffix}@example.com",
             password_hash="hash",
-            subdomain=f"find-{suffix}",
+            user_name='u' + __import__('uuid').uuid4().hex[:10],
+            tenant_name=f"find-{suffix}",
         )
-        issue = SessionService(db_session).create_session(result.user.id)
+        issue = SessionService(db_session).create_session(result.user.user_id)
 
     repo = SessionRepository(db_session)
     token_hash = hash_session_token(issue.token)

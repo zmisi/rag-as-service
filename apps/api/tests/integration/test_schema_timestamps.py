@@ -45,7 +45,7 @@ def test_users_timestamps_on_insert_and_update(db_engine: Engine) -> None:
 
     with db_engine.begin() as conn:
         conn.execute(
-            text("DELETE FROM rag_service.users WHERE id = :id"),
+            text("DELETE FROM rag_service.users WHERE user_id = :id"),
             {"id": user_id},
         )
 
@@ -110,6 +110,6 @@ def test_sessions_timestamps_on_insert_and_update(db_engine: Engine) -> None:
             {"id": session_id},
         )
         conn.execute(
-            text("DELETE FROM rag_service.users WHERE id = :id"),
+            text("DELETE FROM rag_service.users WHERE user_id = :id"),
             {"id": user_id},
         )

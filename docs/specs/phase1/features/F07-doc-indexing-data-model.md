@@ -53,7 +53,7 @@ flowchart TD
 3. **`publish_status`**（`draft`|`review`|`published`）与 **`index_status`**（`pending`|`processing`|`ready`|`failed`）不得合并为单一枚举；`error_message` 仅索引失败。
 4. API 过渡期可继续暴露 JSON 字段 `status` → 映射 `publish_status`；内部 ORM/库列用清晰名。
 5. 列名统一 **`is_latest`**（不用 `is_active`）于 documents / document_sections / document_chunks。
-6. 约束：`UNIQUE (tenant_id, document_group_id, version)`；部分唯一 `(tenant_id, document_group_id) WHERE is_latest`；禁止无租户的全局 hash/source 唯一。
+6. 约束：`UNIQUE (tenant_id, document_group_id, version)`；**不**建 partial unique on `is_latest`（应用维护）；禁止无租户的全局 hash 唯一。
 7. 同租户 `content_sha256` 已有 `ready` latest → 可跳过冗余索引；跨租户相同 hash **不**共享、不跳过。
 8. sections：`UNIQUE (document_id, section_index)`；`level` text `'1'`|`'2'`；版本由 `document_id` 表达。
 9. chunks：`UNIQUE (document_id, chunk_index)`；含 `heading_path`、`embedding_text`、`chunk_type`、`content_hash`、`content_tsv`（可空）、`metadata_` 等；**禁止** chunk 上的 `embedding_model`。
@@ -68,11 +68,11 @@ flowchart TD
 
 | 实体 | 关键字段 / 约束 |
 |------|----------------|
-| documents | `id`（版本 PK）, `tenant_id`, `document_group_id`, `version` int, `is_latest`, `publish_status`, `index_status`, `error_message`, `source_*`, `content_sha256`, `embedding_*`, `metadata_`, `title`, `tag`, `created_by`, `deleted_at`；`UNIQUE (tenant_id, document_group_id, version)`；partial unique WHERE `is_latest` |
-| document_files | `document_id`→版本行, `version` int, … |
-| index_jobs | `document_id`→版本行, `version` int, queue `status`, … |
-| document_sections | `section_index`, `level` text, `is_latest`, `path`, `content`, …；`UNIQUE (document_id, section_index)`；无冗余 version text 列 |
-| document_chunks | `chunk_index`, `heading_path`, `content`, `content_tsv`, `embedding_text`, `chunk_type`, `section_id`, `token_count`, `content_hash`, `embedding`, `metadata_`, `is_latest`；**无** `embedding_model`；`UNIQUE (document_id, chunk_index)` |
+| documents | `doc_id`（版本 PK）, `tenant_id`, `doc_group_id`, `version_number` int, `is_latest`, `publish_status`, `index_status`, `error_message`, `source_type`/`source_uri`/`source_metadata`/…, `content_sha256`, `embedding_*`, `doc_name`, `doc_tag`, `doc_size`, `created_by`, `deleted_at`；`UNIQUE (tenant_id, doc_group_id, version_number)`；**无** `source_key`、**无** partial unique on `is_latest`（列名以 [F08](F08-data-model-naming-refactor.md) / [02-data-model](../02-data-model.md) 为准） |
+| document_files | `doc_id`→版本行, `version` int, … |
+| index_jobs | `doc_id`→版本行, `version` int, queue `status`, … |
+| document_sections | `section_index`, `level` text, `is_latest`, `path`, `content`, …；`UNIQUE (doc_id, section_index)`；无冗余 version text 列 |
+| document_chunks | `chunk_id`, `chunk_index`, `heading_path`, `content`, `content_tsv`, `embedding_text`, `chunk_type`, `section_id`, `token_count`, `content_hash`, `embedding`, `metadata_`, `is_latest`；**无** `embedding_model`；`UNIQUE (doc_id, chunk_index)` |
 
 ## Test Cases
 
@@ -85,7 +85,7 @@ flowchart TD
 | F07-T05 | Given 已 published 版本 When 索引失败 | Then `publish_status` 仍为 `published`；`index_status=failed`；`error_message` 非空 | api |
 | F07-T06 | Given 索引成功 When 读 documents 与 chunks | Then `index_status=ready`；documents 上 `embedding_model`/`embedding_dimension`（及 provider 若有）已填；chunks **无** `embedding_model` 列 | api |
 | F07-T07 | Given 同组 `version=1` 已 ready When `version=2` 索引成功 | Then v2 documents/sections/chunks `is_latest=true`；v1 三表对应行均为 `is_latest=false` | api |
-| F07-T08 | Given 同租户已有 `content_sha256` 且 `index_status=ready` 的 latest When 再发布相同内容 | Then 按实现策略跳过冗余 embedding/index 工作 | api |
+| F07-T08 | Given 同租户已有 `content_sha256` 且 `index_status=ready` 的 latest When 再发布相同内容 | Then 跳过冗余 embedding/index；`index_status=ready`；publish HTTP 200；响应含 `warning_code=duplicate_content_sha256` 与非空 `warning`；index_job.error 含 skip 说明 | api |
 | F07-T09 | Given tenant-A 与 tenant-B 发布相同 `content_sha256` When 双方索引 | Then 各自拥有独立版本行与可检索 chunk；互不 search 命中对方内容 | api |
 | F07-T10 | Given 索引 worker 写入 H1/H2 节 When 读 sections | Then 每节 `section_index` 在 `document_id` 内唯一；`level` 为 text（如 `'1'`/`'2'`） | api |
 | F07-T11 | Given 索引 worker 写入 leaf When 读 chunks | Then 含 `tenant_id`、单调 `chunk_index`、非空 `embedding_text`、`heading_path` 与父节对齐、`is_latest=true`；无 `embedding_model` | api |

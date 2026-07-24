@@ -39,7 +39,7 @@ def test_f06_t01_rag_search_grounded(
     fake_searcher: FakeKnowledgeSearcher,
 ) -> None:
     """F06-T01: indexed corpus → search_knowledge; used_search; answer grounded."""
-    _seed_return_policy(fake_searcher, tenants["tenant_a"].id)
+    _seed_return_policy(fake_searcher, tenants["tenant_a"].tenant_id)
     llm = ScriptedLlmClient(
         [
             LlmResult(
@@ -147,8 +147,8 @@ def test_f06_t05_history_compression(
     from rag_api.db.models import Conversation
 
     conv = Conversation(
-        tenant_id=tenants["tenant_a"].id,
-        user_id=tenants["user_a"].id,
+        tenant_id=tenants["tenant_a"].tenant_id,
+        user_id=tenants["user_a"].user_id,
         title="t05",
         status="active",
     )
@@ -161,7 +161,7 @@ def test_f06_t05_history_compression(
         db.add(
             Message(
                 conversation_id=conv.id,
-                tenant_id=tenants["tenant_a"].id,
+                tenant_id=tenants["tenant_a"].tenant_id,
                 role=role,
                 content=f"msg-{i}",
             )
@@ -193,7 +193,7 @@ def test_f06_t06_max_steps_truncated(
     fake_searcher: FakeKnowledgeSearcher,
 ) -> None:
     """F06-T06: endless tools → truncated within MAX_STEPS."""
-    _seed_return_policy(fake_searcher, tenants["tenant_a"].id)
+    _seed_return_policy(fake_searcher, tenants["tenant_a"].tenant_id)
     tool_step = LlmResult(
         tool_calls=[
             ToolCall(id="tx", name=TOOL_SEARCH_KNOWLEDGE, arguments={"query": "退货"})
@@ -226,7 +226,7 @@ def test_f06_t07_tenant_isolation(
     fake_searcher: FakeKnowledgeSearcher,
 ) -> None:
     """F06-T07: tenant-A corpus not visible to tenant-B search."""
-    _seed_return_policy(fake_searcher, tenants["tenant_a"].id)
+    _seed_return_policy(fake_searcher, tenants["tenant_a"].tenant_id)
     # B has empty corpus
 
     llm = ScriptedLlmClient(

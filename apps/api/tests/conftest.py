@@ -120,27 +120,38 @@ def tenants(db: Session) -> dict:
     password_hash = hash_password("password123")
 
     def ensure_tenant(subdomain: str, email: str) -> tuple[Tenant, User]:
-        tenant = db.scalar(select(Tenant).where(Tenant.subdomain == subdomain))
+        tenant = db.scalar(select(Tenant).where(Tenant.tenant_name == subdomain))
         user = db.scalar(select(User).where(User.email == email))
         if user is None:
-            user = User(email=email, password_hash=password_hash)
+            user = User(
+                email=email,
+                password_hash=password_hash,
+                user_name=email.split("@")[0].replace(".", "-")[:32],
+            )
             db.add(user)
             db.flush()
         elif user.password_hash != password_hash:
             user.password_hash = password_hash
             db.flush()
         if tenant is None:
-            tenant = Tenant(subdomain=subdomain, display_name=subdomain)
+            tenant = Tenant(tenant_name=subdomain)
             db.add(tenant)
             db.flush()
         member = db.scalar(
             select(TenantMember).where(
-                TenantMember.tenant_id == tenant.id,
-                TenantMember.user_id == user.id,
+                TenantMember.tenant_id == tenant.tenant_id,
+                TenantMember.user_id == user.user_id,
             )
         )
         if member is None:
-            db.add(TenantMember(tenant_id=tenant.id, user_id=user.id, role="owner"))
+            db.add(
+                TenantMember(
+                    tenant_id=tenant.tenant_id,
+                    user_id=user.user_id,
+                    member_name=user.user_name,
+                    role="owner",
+                )
+            )
         db.commit()
         db.refresh(tenant)
         db.refresh(user)
@@ -194,7 +205,7 @@ def client_a(
     app.dependency_overrides[get_db] = _override_db
     app.dependency_overrides[get_llm_client] = lambda: scripted_llm
     app.dependency_overrides[get_knowledge_searcher] = lambda: fake_searcher
-    token = issue_session_for_user(db, tenants["user_a"].id)
+    token = issue_session_for_user(db, tenants["user_a"].user_id)
     with TestClient(app) as c:
         set_client_session_cookie(
             c,
@@ -208,7 +219,7 @@ def client_a(
 @pytest.fixture
 def switch_to_b(client_a: TestClient, tenants: dict, db: Session):
     def _switch() -> TestClient:
-        token = issue_session_for_user(db, tenants["user_b"].id)
+        token = issue_session_for_user(db, tenants["user_b"].user_id)
         set_client_session_cookie(
             client_a,
             token,

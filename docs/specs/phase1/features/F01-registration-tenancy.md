@@ -54,14 +54,22 @@ flowchart TD
 
 ## 数据与边界
 
+> 列命名以 [F08](F08-data-model-naming-refactor.md) / [02-data-model.md](../02-data-model.md) 为准。Host 仍用 `{tenant_name}.lxzxai.com`；持久化列名为 **`tenant_name`**（原 API/文案可称 subdomain）。
+
 | 实体 | 关键字段 / 约束 |
 |------|----------------|
-| user | `id`, `email` UNIQUE (ci), `password_hash` |
-| tenant | `id`, `subdomain` UNIQUE |
-| tenant_member | `tenant_id`, `user_id`, `role=owner`；注册时一条 |
+| user | `user_id`, `user_name` UNIQUE, `email` UNIQUE (ci), `password_hash`, `active` |
+| tenant | `tenant_id`, `tenant_name` UNIQUE, `status`, `charge_mode` |
+| tenant_member | `member_id`, `tenant_id`, **`user_id` FK**, `member_name`, `active`, `role=owner`；注册时一条 |
 
 时间戳列 `create_at` / `update_at` 见 [00-constraints.mdc](../../../../.cursor/rules/00-constraints.mdc) §3.2。  
-表结构明细见 [F01-registration-tenancy-data-model.md](F01-registration-tenancy-data-model.md)。
+表结构明细见 [F01-registration-tenancy-data-model.md](F01-registration-tenancy-data-model.md)（实现后须与 F08 对齐）。
+
+## 行为规则补充（F08）
+
+8. 注册须写入 `users.user_name`（请求显式传入，或缺省由 email `@` 前规范化生成）与 `active=1`。
+9. owner 成员行必须含同一 `user_id`，`member_name` 默认等于 `user_name`。
+
 
 ## Test Cases
 

@@ -36,11 +36,15 @@ export type DocFile = {
 
 export type DocDetail = DocSummary & {
   files: DocFile[];
+  warning_code?: string | null;
+  warning?: string | null;
 };
 
 export type IndexJobStatus = {
   status: "pending" | "running" | "succeeded" | "failed";
   error?: string | null;
+  warning_code?: string | null;
+  warning?: string | null;
   attempt_count: number;
   create_at: string;
   update_at: string;

@@ -72,12 +72,14 @@ def get_current_tenant(
     host: str | None = Header(default=None, alias="Host"),
     x_forwarded_host: str | None = Header(default=None, alias="X-Forwarded-Host"),
 ) -> Tenant:
+    from rag_api.db.models.tenant import TENANT_STATUS_ACTIVE
+
     raw_host = _raw_host(request, host, x_forwarded_host)
     subdomain = parse_subdomain(raw_host)
     if subdomain is None:
         raise HTTPException(status_code=404, detail="Unknown host")
-    tenant = db.scalar(select(Tenant).where(Tenant.subdomain == subdomain))
-    if tenant is None:
+    tenant = db.scalar(select(Tenant).where(Tenant.tenant_name == subdomain))
+    if tenant is None or tenant.status != TENANT_STATUS_ACTIVE:
         raise HTTPException(status_code=404, detail="Unknown tenant")
     return tenant
 
@@ -87,6 +89,8 @@ def _session_user_from_cookie(
     db: Session,
     settings: Settings,
 ) -> User:
+    from rag_api.db.models.user import USER_ACTIVE
+
     token = request.cookies.get(settings.session_cookie_name)
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
@@ -94,6 +98,9 @@ def _session_user_from_cookie(
     service = SessionService(db, settings)
     validated = service.validate_session(token)
     if validated is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    if validated.user.active != USER_ACTIVE:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     if service.maybe_slide_expiry(validated.session):
@@ -116,10 +123,14 @@ def get_current_user(
     settings: Settings = Depends(get_settings),
     x_test_user_id: str | None = Header(default=None, alias="X-Test-User-Id"),
 ) -> User:
+    from rag_api.db.models.user import USER_ACTIVE
+
     token = request.cookies.get(settings.session_cookie_name)
     if token:
         validated = SessionService(db, settings).validate_session(token)
         if validated is not None:
+            if validated.user.active != USER_ACTIVE:
+                raise HTTPException(status_code=401, detail="Not authenticated")
             service = SessionService(db, settings)
             if service.maybe_slide_expiry(validated.session):
                 db.commit()
@@ -133,7 +144,7 @@ def get_current_user(
         except ValueError as exc:
             raise HTTPException(status_code=401, detail="Invalid user id") from exc
         user = db.get(User, user_id)
-        if user is None:
+        if user is None or user.active != USER_ACTIVE:
             raise HTTPException(status_code=401, detail="Unknown user")
         return user
 
@@ -145,17 +156,21 @@ def require_tenant_member(
     tenant: Tenant = Depends(get_current_tenant),
     user: User = Depends(get_current_user),
 ) -> AuthContext:
+    from rag_api.db.models.tenant_member import MEMBER_ACTIVE
+
     member = db.scalar(
         select(TenantMember).where(
-            TenantMember.tenant_id == tenant.id,
-            TenantMember.user_id == user.id,
+            TenantMember.tenant_id == tenant.tenant_id,
+            TenantMember.user_id == user.user_id,
         )
     )
     if member is None:
         raise HTTPException(status_code=403, detail="Not a tenant member")
+    if member.active != MEMBER_ACTIVE:
+        raise HTTPException(status_code=403, detail="Not a tenant member")
     return AuthContext(
-        user_id=user.id,
-        tenant_id=tenant.id,
+        user_id=user.user_id,
+        tenant_id=tenant.tenant_id,
         email=user.email,
-        subdomain=tenant.subdomain,
+        subdomain=tenant.tenant_name,
     )

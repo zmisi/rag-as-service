@@ -33,6 +33,11 @@ export function IndexJobStatusCard({ job, published }: Props) {
     <section className="doc-index-card" aria-label="索引状态">
       <h3 className="doc-section-title">索引状态</h3>
       <p>{LABELS[job.status]}</p>
+      {job.warning ? (
+        <p className="doc-alert-warning" role="status">
+          {job.warning}
+        </p>
+      ) : null}
       {job.status === "failed" && job.error ? (
         <p className="doc-error" role="alert">
           {job.error}

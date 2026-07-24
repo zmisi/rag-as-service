@@ -124,6 +124,8 @@ flowchart LR
    - Phase 1 索引叶节仅 **H1 / H2**（或 Markdown 等价）；解析层可保留 H3+ 标签，建树时更深标题**并入**最近的 H2 叶节（无 H2 则并入所属 H1）。
    - 无任何标题：整篇（或整文件合并结果）作为 **单节**，`path` 可用文档 title 或文件名。
    - 若 H1 下存在 H2：叶节以 **H2** 为准；H1 仅含导言、且导言非空时可另成叶节（`path` = 该 H1 标题），否则不单独建空 H1 叶节。
+   - **编号大纲归一化（业界层级）**：标题匹配 `^\d+(\.\d+)*`（如 `2.1.1 …`）时，建树前按编号深度补齐缺失父级并映射为 H1/H2/H3+（更深并入 H2）；保证 `path` 形如 `2.1 > 2.1.1 …`，避免无父级的扁平 H2。
+   - **正文净化**：节/leaf 写入前做 HTML 实体还原（`&gt;`→`>`）及常见 Markdown 转义清理（`\_`→`_`），避免检索噪声。
    - 每节存储 **`path`**（如 `退款政策 > 时效`）与 **节全文** `content`（含该节下段落与 Markdown 表）；`level` 为 text `'1'`|`'2'`；序号列 **`section_index`**。
 10. **切块（可配置，仅节内）**：
    - 对每个叶节全文再切 leaf：目标长度与重叠经 Settings（默认 `CHUNK_TARGET_TOKENS=800`，`CHUNK_OVERLAP_TOKENS=100`）。
@@ -131,7 +133,7 @@ flowchart LR
    - 空节不产生 leaf；整文档无文本 → 0 chunk（见规则 7）。
    - 运行时只读配置；禁止同进程混用多套分块参数写同一批 chunk。
    - leaf 序号列 **`chunk_index`**（文档版本内全局）；写富字段（`heading_path`、`embedding_text`、`chunk_type`、`content_hash` 等）；**不**在 chunk 上存 `embedding_model`。
-11. **Embedding（可配置）**：仅对 **leaf** `document_chunks` 调用单一 QWen 兼容接口；模型名与维度经配置（如 `EMBEDDING_MODEL`、`EMBEDDING_DIM`，默认维度 `1024`）。成功后审计字段写在 **`documents`**（`embedding_model` / `embedding_dimension` / provider）。同一部署一套维度；列类型与配置一致；改维度须迁库 + 全量重建。节全文 **不**单独向量化。
+11. **Embedding（可配置）**：仅对 **leaf** `document_chunks` 调用单一 QWen 兼容接口；送入模型的文本为 **`embedding_text`** = `heading_path` 以 ` > ` 拼接 + 换行 + leaf `content`（无 path 时退化为仅 `content`）；`content` 列仍存纯正文。模型名与维度经配置（如 `EMBEDDING_MODEL`、`EMBEDDING_DIM`，默认维度 `1024`）。成功后审计字段写在 **`documents`**（`embedding_model` / `embedding_dimension` / provider）。同一部署一套维度；列类型与配置一致；改维度须迁库 + 全量重建。节全文 **不**单独向量化。
 12. **检索契约**（本 Feature 实现）：`search(tenant_id, query, top_k) → Hit[]`
     - 用 query embedding 在 **`is_latest` leaf** 上 top-k（且对应文档 `publish_status=published`、`index_status=ready`、未软删）；
     - 每条命中映射到所属叶节，返回至少：`document_id`、`chunk_id`（命中的 leaf id）、`section_id`、`path`、`content`（**节全文**）、`score`；
@@ -155,10 +157,10 @@ flowchart LR
 
 | 实体 | 关键字段 / 约束 |
 |------|----------------|
-| documents（版本行，索引相关） | `id`, `tenant_id`, `document_group_id`, `version`（int）, `is_latest`, `publish_status`, `index_status`(`pending`\|`processing`\|`ready`\|`failed`), `error_message`, `embedding_*`（审计） |
-| index_job | `id`, `tenant_id`, `document_id`（→ 版本行）, `version`（int）, `status`(`pending`\|`running`\|`succeeded`\|`failed`), `error` |
-| document_section | `id`, `tenant_id`, `document_id`, `parent_id`（可选，H2→H1）, `level`（text `'1'`\|`'2'`）, `title`, `path`, `content`（节全文）, `section_index`, `is_latest` |
-| document_chunk（leaf） | `id`, `tenant_id`, `document_id`, `section_id`, `chunk_index`, `heading_path`, `content`, `embedding_text`, `chunk_type`, `token_count`, `content_hash`, `embedding vector(EMBEDDING_DIM)`, `metadata_`, `is_latest`（**无** `embedding_model`） |
+| documents（版本行，索引相关） | `doc_id`, `tenant_id`, `doc_group_id`, `version_number`（int）, `is_latest`, `publish_status`, `index_status`(`pending`\|`processing`\|`ready`\|`failed`), `error_message`, `embedding_*`（审计） |
+| index_job | `id`, `tenant_id`, `doc_id`（→ 版本行）, `version`（int）, `status`(`pending`\|`running`\|`succeeded`\|`failed`), `error` |
+| document_section | `id`, `tenant_id`, `doc_id`, `parent_id`（可选，H2→H1）, `level`（text `'1'`\|`'2'`）, `title`, `path`, `content`（节全文）, `section_index`, `is_latest` |
+| document_chunk（leaf） | `chunk_id`, `tenant_id`, `doc_id`, `section_id`, `chunk_index`, `heading_path`, `content`, `embedding_text`, `chunk_type`, `token_count`, `content_hash`, `embedding vector(EMBEDDING_DIM)`, `metadata_`, `is_latest`（**无** `embedding_model`） |
 
 时间戳列 `create_at` / `update_at` 见 [00-constraints.mdc](../../../../.cursor/rules/00-constraints.mdc) §3.2。明细见 [02-data-model.md](../02-data-model.md)。
 
@@ -189,3 +191,5 @@ flowchart LR
 | F04-T15 | Given `.docx` publish When 索引 | Then 不经 PyMuPDF；`parse_route=docling`（或 Docling mock）；job=succeeded | unit |
 | F04-T16 | Given 有 TOC/骨架的 PDF When 解析 | Then `skeleton=true`；`parse_route=docling`；导出含多级 heading（及表/图标签若存在） | unit |
 | F04-T17 | Given 判定有骨架但 Docling 不可用 When 索引 | Then job/index failed；不写入「假结构成功」的单节 flat 结果冒充结构路径 | unit |
+| F04-T18 | Given 仅有编号小标题（如 `## 2.1.1` / `## 2.1.2`，无显式父标题）When 建节树 | Then 自动补父级；叶节 `path` 含 `>`（如 `2.1 > 2.1.1 …`）；正文 `&gt;`/`\_` 已净化 | unit |
+| F04-T19 | Given 叶节 `path` 非空 When 写入 chunk | Then `embedding_text` 以 path 为前缀且含 leaf `content`；向量对 `embedding_text` 计算；`content` 不含强制拼上的 path 前缀 | unit |

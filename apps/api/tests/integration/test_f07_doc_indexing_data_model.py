@@ -86,7 +86,7 @@ def test_f07_t01_schema_text_triggers_version_int(db_engine: Engine) -> None:
                 FROM information_schema.columns
                 WHERE table_schema = 'rag_service'
                   AND table_name = 'documents'
-                  AND column_name = 'version'
+                  AND column_name = 'version_number'
                 """
             )
         ).scalar()
@@ -163,11 +163,11 @@ def test_f07_t02_create_document_version_row(client_a, db: Session, tenants: dic
 
     doc = db.get(Document, body["id"])
     assert doc is not None
-    assert doc.tenant_id == tenants["tenant_a"].id
+    assert doc.tenant_id == tenants["tenant_a"].tenant_id
     assert doc.publish_status == "draft"
-    assert doc.version == 1
+    assert doc.version_number == 1
     assert doc.is_latest is True
-    assert doc.document_group_id is not None
+    assert doc.doc_group_id is not None
 
 
 def _create_upload_publish(client, headers, *, title: str = "Doc", tag: str = "faq") -> dict:
@@ -203,7 +203,7 @@ def test_f07_t03_t09_tenant_isolation_documents_and_hash(
     # switch back to A
     from tests.helpers import issue_session_for_user, set_client_session_cookie
 
-    token = issue_session_for_user(db, tenants["user_a"].id)
+    token = issue_session_for_user(db, tenants["user_a"].user_id)
     set_client_session_cookie(client_a, token, host=HEADERS_A["Host"])
     assert client_a.get(f"/v1/documents/{b['id']}", headers=HEADERS_A).status_code == 404
 
@@ -231,18 +231,18 @@ def test_f07_t03_t09_tenant_isolation_documents_and_hash(
     db.refresh(doc_b)
     assert doc_a.index_status == "ready"
     assert doc_b.index_status == "ready"
-    assert doc_a.id != doc_b.id
+    assert doc_a.doc_id != doc_b.doc_id
 
     def factory():
         return db
 
     searcher = PgKnowledgeSearcher(factory, embedder=emb)
-    hits_a = searcher.search(ta.id, "SHARED_HASH_PHRASE_ONLY", top_k=5)
-    hits_b = searcher.search(tb.id, "SHARED_HASH_PHRASE_ONLY", top_k=5)
-    assert hits_a and all(h.document_id == str(doc_a.id) for h in hits_a)
-    assert hits_b and all(h.document_id == str(doc_b.id) for h in hits_b)
-    assert not any(h.document_id == str(doc_b.id) for h in hits_a)
-    assert not any(h.document_id == str(doc_a.id) for h in hits_b)
+    hits_a = searcher.search(ta.tenant_id, "SHARED_HASH_PHRASE_ONLY", top_k=5)
+    hits_b = searcher.search(tb.tenant_id, "SHARED_HASH_PHRASE_ONLY", top_k=5)
+    assert hits_a and all(h.document_id == str(doc_a.doc_id) for h in hits_a)
+    assert hits_b and all(h.document_id == str(doc_b.doc_id) for h in hits_b)
+    assert not any(h.document_id == str(doc_b.doc_id) for h in hits_a)
+    assert not any(h.document_id == str(doc_a.doc_id) for h in hits_b)
 
 
 @pytest.mark.integration
@@ -319,7 +319,7 @@ def test_f07_t07_new_version_flips_is_latest_and_search(
     v1 = _create_upload_publish(client_a, HEADERS_A, title="V1")
     doc_v1 = db.get(Document, v1["id"])
     assert doc_v1 is not None
-    job1 = db.scalar(select(IndexJob).where(IndexJob.document_id == doc_v1.id))
+    job1 = db.scalar(select(IndexJob).where(IndexJob.doc_id == doc_v1.doc_id))
     assert job1 is not None
     process_index_job(
         db,
@@ -331,7 +331,7 @@ def test_f07_t07_new_version_flips_is_latest_and_search(
     db.refresh(doc_v1)
     assert doc_v1.index_status == "ready"
 
-    nv = client_a.post(f"/v1/documents/{doc_v1.id}/new-version", headers=HEADERS_A)
+    nv = client_a.post(f"/v1/documents/{doc_v1.doc_id}/new-version", headers=HEADERS_A)
     assert nv.status_code == 200, nv.text
     draft = nv.json()
     assert draft["version"] == 2
@@ -354,7 +354,7 @@ def test_f07_t07_new_version_flips_is_latest_and_search(
 
     job2 = db.scalar(
         select(IndexJob)
-        .where(IndexJob.document_id == draft_id)
+        .where(IndexJob.doc_id == draft_id)
         .order_by(IndexJob.create_at.desc())
     )
     assert job2 is not None
@@ -376,14 +376,14 @@ def test_f07_t07_new_version_flips_is_latest_and_search(
 
     sec_v1 = db.scalar(
         select(DocumentSection).where(
-            DocumentSection.document_id == doc_v1.id,
+            DocumentSection.doc_id == doc_v1.doc_id,
             DocumentSection.is_latest.is_(True),
         )
     )
     assert sec_v1 is None
     chunk_v1 = db.scalar(
         select(DocumentChunk).where(
-            DocumentChunk.document_id == doc_v1.id,
+            DocumentChunk.doc_id == doc_v1.doc_id,
             DocumentChunk.is_latest.is_(True),
         )
     )
@@ -391,7 +391,7 @@ def test_f07_t07_new_version_flips_is_latest_and_search(
     assert (
         db.scalar(
             select(DocumentSection).where(
-                DocumentSection.document_id == doc_v2.id,
+                DocumentSection.doc_id == doc_v2.doc_id,
                 DocumentSection.is_latest.is_(True),
             )
         )
@@ -402,7 +402,7 @@ def test_f07_t07_new_version_flips_is_latest_and_search(
         return db
 
     searcher = PgKnowledgeSearcher(factory, embedder=emb)
-    tenant_id = tenants["tenant_a"].id
+    tenant_id = tenants["tenant_a"].tenant_id
     hits_old = searcher.search(tenant_id, "OLD_F07_VERSION_PHRASE", top_k=5)
     hits_new = searcher.search(tenant_id, "NEW_F07_VERSION_PHRASE", top_k=5)
     assert not any("OLD_F07_VERSION_PHRASE" in h.content for h in hits_old)
@@ -419,24 +419,32 @@ def test_f07_t08_same_tenant_content_sha256_skip(client_a, db: Session, tenants:
     doc1.content_sha256 = content_sha256(TXT_BODY_DUP)
     doc1.index_status = "ready"
     doc1.is_latest = True
-    job1 = db.scalar(select(IndexJob).where(IndexJob.document_id == doc1.id))
+    job1 = db.scalar(select(IndexJob).where(IndexJob.doc_id == doc1.doc_id))
     if job1:
         job1.status = "succeeded"
     db.commit()
 
     second = _create_upload_publish(client_a, HEADERS_A, title="Second")
+    assert second.get("warning_code") == "duplicate_content_sha256"
+    assert second.get("warning")
     doc2 = db.get(Document, second["id"])
     assert doc2 is not None
     assert doc2.content_sha256 == content_sha256(TXT_BODY_DUP)
     assert doc2.index_status == "ready"
     job2 = db.scalar(
         select(IndexJob)
-        .where(IndexJob.document_id == doc2.id)
+        .where(IndexJob.doc_id == doc2.doc_id)
         .order_by(IndexJob.create_at.desc())
     )
     assert job2 is not None
     assert job2.status == "succeeded"
     assert job2.error and "content_sha256" in job2.error
+    status = client_a.get(
+        f"/v1/documents/{second['id']}/index-status", headers=HEADERS_A
+    )
+    assert status.status_code == 200
+    assert status.json()["warning_code"] == "duplicate_content_sha256"
+    assert status.json()["warning"]
 
 
 @pytest.mark.integration
@@ -466,7 +474,7 @@ beta body
     sections = list(
         db.scalars(
             select(DocumentSection)
-            .where(DocumentSection.document_id == doc.id)
+            .where(DocumentSection.doc_id == doc.doc_id)
             .order_by(DocumentSection.section_index)
         ).all()
     )
@@ -481,14 +489,14 @@ beta body
     chunks = list(
         db.scalars(
             select(DocumentChunk)
-            .where(DocumentChunk.document_id == doc.id)
+            .where(DocumentChunk.doc_id == doc.doc_id)
             .order_by(DocumentChunk.chunk_index)
         ).all()
     )
     assert chunks
     assert [c.chunk_index for c in chunks] == list(range(len(chunks)))
     for c in chunks:
-        assert c.tenant_id == tenant.id
+        assert c.tenant_id == tenant.tenant_id
         assert c.embedding_text
         assert c.heading_path
         assert c.is_latest is True
@@ -508,12 +516,12 @@ def test_f07_t12_hard_delete_cascades_chunks_sections(db: Session, tmp_path):
         storage=storage,
         parser=ScriptedDocumentParser(default="# H\n\n## S\n\ncascade body\n"),
     )
-    doc_id = doc.id
+    doc_id = doc.doc_id
     assert db.scalar(
-        select(DocumentSection).where(DocumentSection.document_id == doc_id)
+        select(DocumentSection).where(DocumentSection.doc_id == doc_id)
     )
     assert db.scalar(
-        select(DocumentChunk).where(DocumentChunk.document_id == doc_id)
+        select(DocumentChunk).where(DocumentChunk.doc_id == doc_id)
     )
 
     db.delete(doc)
@@ -521,11 +529,11 @@ def test_f07_t12_hard_delete_cascades_chunks_sections(db: Session, tmp_path):
 
     assert db.get(Document, doc_id) is None
     assert (
-        db.scalar(select(DocumentSection).where(DocumentSection.document_id == doc_id))
+        db.scalar(select(DocumentSection).where(DocumentSection.doc_id == doc_id))
         is None
     )
     assert (
-        db.scalar(select(DocumentChunk).where(DocumentChunk.document_id == doc_id))
+        db.scalar(select(DocumentChunk).where(DocumentChunk.doc_id == doc_id))
         is None
     )
 
@@ -544,8 +552,8 @@ def test_f07_t13_search_tenant_isolation(db: Session, tmp_path):
         return db
 
     searcher = PgKnowledgeSearcher(factory, embedder=emb)
-    hits_a = searcher.search(ta.id, "F07_TENANT_A_ONLY_PHRASE", top_k=5)
-    hits_b = searcher.search(tb.id, "F07_TENANT_A_ONLY_PHRASE", top_k=5)
+    hits_a = searcher.search(ta.tenant_id, "F07_TENANT_A_ONLY_PHRASE", top_k=5)
+    hits_b = searcher.search(tb.tenant_id, "F07_TENANT_A_ONLY_PHRASE", top_k=5)
     assert hits_a
     assert hits_a[0].path
     assert "F07_TENANT_A_ONLY_PHRASE" in hits_a[0].content

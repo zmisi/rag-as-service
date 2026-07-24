@@ -31,6 +31,16 @@ LEGACY_FILE_TYPE_MESSAGE = (
     "Please re-save as .docx / .pptx and upload again."
 )
 
+# Same-tenant content hash skip (publish / index worker).
+WARNING_CODE_DUPLICATE_CONTENT_SHA256 = "duplicate_content_sha256"
+WARNING_DUPLICATE_CONTENT_SHA256 = (
+    "同租户已存在相同内容且已索引完成的文档，本次已跳过重复切块与 embedding；"
+    "发布成功，检索将沿用已有索引。"
+)
+INDEX_JOB_ERROR_DUPLICATE_CONTENT_SHA256 = (
+    "skipped: duplicate content_sha256 in tenant"
+)
+
 
 def is_valid_tag(tag: str) -> bool:
     return tag in DOC_TAGS

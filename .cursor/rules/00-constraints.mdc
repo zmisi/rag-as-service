@@ -23,12 +23,13 @@ alwaysApply: true
 ## 2. 多租户与子域
 
 - 一个注册用户创建一个租户；数据与向量索引按 `tenant_id` 隔离。
-- 租户 `subdomain`：注册时由用户选定，系统校验格式与**全局唯一**（Phase 1 选定后不可改，见 F01）。
-- `subdomain` 规则：
+- 租户 `tenant_name`（Host 二级域名；历史文案亦称 subdomain）：注册时由用户选定，系统校验格式与**全局唯一**（Phase 1 选定后不可改，见 F01）。
+- `tenant_name` 规则：
   - 小写字母、数字、连字符 `-`
   - 长度 3–32
   - 不以 `-` 开头或结尾
   - 保留字不可用：`www`、`admin`、`api`、`app`、`mail`、`static`、`cdn`、`lxzxai`
+- Host 解析：`{tenant_name}.lxzxai.com` → `tenants.tenant_name` → `tenant_id`；未知 → 404。
 - 跨租户读写一律禁止（含向量检索）。
 
 ## 3. 技术栈
