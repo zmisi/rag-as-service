@@ -33,12 +33,19 @@ def run_user_turn(
     *,
     conversation_id: UUID,
     tenant_id: UUID,
-    user_id: UUID,
     content: str,
     llm: LlmClient,
     searcher: KnowledgeSearcher,
+    user_id: UUID | None = None,
+    site_key_id: UUID | None = None,
 ) -> TurnResult:
-    """Persist user message, run Agent Loop, persist assistant + traces."""
+    """Persist user message, run Agent Loop, persist assistant + traces.
+
+    Ownership: exactly one of ``user_id`` (Portal) or ``site_key_id`` (F12 Widget).
+    """
+    if (user_id is None) == (site_key_id is None):
+        raise ValueError("run_user_turn requires exactly one of user_id or site_key_id")
+
     timer = StageTimer(
         "turn",
         conversation_id=str(conversation_id),
@@ -49,7 +56,8 @@ def run_user_turn(
         "turn.start",
         conversation_id=str(conversation_id),
         tenant_id=str(tenant_id),
-        user_id=str(user_id),
+        user_id=str(user_id) if user_id else None,
+        site_key_id=str(site_key_id) if site_key_id else None,
         content=snip(content, 200),
     )
 
@@ -59,6 +67,7 @@ def run_user_turn(
         conversation_id=conversation_id,
         tenant_id=tenant_id,
         user_id=user_id,
+        site_key_id=site_key_id,
         role="user",
         content=content,
         meta=None,
@@ -68,6 +77,7 @@ def run_user_turn(
         conversation_id=conversation_id,
         tenant_id=tenant_id,
         user_id=user_id,
+        site_key_id=site_key_id,
         user_content=content,
     )
     timer.mark("persist_user")
@@ -90,6 +100,7 @@ def run_user_turn(
         conversation_id=conversation_id,
         tenant_id=tenant_id,
         user_id=user_id,
+        site_key_id=site_key_id,
     )
     timer.mark("load_history", history_count=len(history))
 

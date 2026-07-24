@@ -52,6 +52,9 @@ export function DocSidebar({
           新建文档
         </button>
       </div>
+      <p className="sidebar-widget-link">
+        <a href="/admin/widget">Embed Widget</a>
+      </p>
 
       <input
         className="doc-search"

@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 
+from rag_api.api.middleware.widget_cors import WidgetCorsMiddleware
 from rag_api.api.v1 import api_router
 from rag_api.api.v1.auth import router as auth_router
 from rag_api.config import get_settings
@@ -15,6 +16,8 @@ def create_app(lifespan=None) -> FastAPI:
         openapi_url="/api/openapi.json",
         lifespan=lifespan,
     )
+
+    app.add_middleware(WidgetCorsMiddleware)
 
     app.include_router(auth_router)
     # F05 conversations: /v1/conversations (via /backend/v1/*)

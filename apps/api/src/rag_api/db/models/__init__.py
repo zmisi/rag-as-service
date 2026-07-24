@@ -11,6 +11,7 @@ from rag_api.db.models.session import Session
 from rag_api.db.models.tenant import Tenant
 from rag_api.db.models.tenant_member import ROLE_OWNER, TenantMember
 from rag_api.db.models.user import User
+from rag_api.db.models.widget_site_key import WidgetSiteKey
 
 __all__ = [
     "ROLE_OWNER",
@@ -27,4 +28,5 @@ __all__ = [
     "Tenant",
     "TenantMember",
     "User",
+    "WidgetSiteKey",
 ]

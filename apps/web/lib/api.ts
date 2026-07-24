@@ -62,7 +62,8 @@ export type ConversationStatus = "active" | "archived";
 export type Conversation = {
   id: string;
   tenant_id: string;
-  user_id: string;
+  user_id?: string | null;
+  site_key_id?: string | null;
   title: string;
   status: ConversationStatus;
   create_at: string;
@@ -104,6 +105,7 @@ export type FaqClickResult = {
   document_id: string;
   question: string;
   click_count: number;
+  hot: boolean;
 };
 
 type StreamEvent =
@@ -439,4 +441,60 @@ export function newDocumentVersion(id: string) {
 
 export function getIngestStatus(id: string) {
   return docApi<IngestJobStatus | null>(`/documents/${id}/ingest-status`);
+}
+
+/* ---- F12 Embed Widget site keys (admin) ---- */
+
+export type WidgetSiteKey = {
+  id: string;
+  tenant_id: string;
+  public_key: string;
+  status: "active" | "revoked";
+  allowed_origins: string[];
+  name?: string | null;
+  create_at: string;
+  update_at: string;
+};
+
+export type WidgetSnippet = {
+  snippet: string;
+  public_key: string;
+};
+
+export function listWidgetSiteKeys() {
+  return api<WidgetSiteKey[]>("/admin/widget-site-keys");
+}
+
+export function createWidgetSiteKey(body: {
+  allowed_origins: string[];
+  name?: string;
+}) {
+  return api<WidgetSiteKey>("/admin/widget-site-keys", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function updateWidgetSiteKey(
+  id: string,
+  body: {
+    allowed_origins?: string[];
+    name?: string;
+    clear_name?: boolean;
+  },
+) {
+  return api<WidgetSiteKey>(`/admin/widget-site-keys/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export function revokeWidgetSiteKey(id: string) {
+  return api<WidgetSiteKey>(`/admin/widget-site-keys/${id}/revoke`, {
+    method: "POST",
+  });
+}
+
+export function getWidgetSnippet(id: string) {
+  return api<WidgetSnippet>(`/admin/widget-site-keys/${id}/snippet`);
 }

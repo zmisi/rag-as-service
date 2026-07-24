@@ -221,12 +221,6 @@ a {
   display: none;
 }
 
-.chat-main-toolbar.chat-main-toolbar-collapsed {
-  display: flex;
-  flex-shrink: 0;
-  padding: 0.65rem 1rem 0.25rem;
-}
-
 .tabs {
   display: flex;
   gap: 0;
@@ -415,6 +409,29 @@ a {
   min-height: 0;
   overflow: hidden;
   background: var(--bg-elevated);
+  position: relative;
+}
+
+.chat-main-toolbar.chat-main-toolbar-collapsed {
+  display: flex;
+  flex-shrink: 0;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 5;
+  padding: 0.65rem 1rem 0.25rem;
+  pointer-events: none;
+}
+
+.chat-main-toolbar.chat-main-toolbar-collapsed .collapsed-chrome,
+.chat-main-toolbar.chat-main-toolbar-collapsed button {
+  pointer-events: auto;
+}
+
+.chat-shell-sidebar-collapsed .draft-home {
+  /* Center in full main pane; chrome floats top-left and does not offset layout */
+  width: 100%;
+  margin: 0 auto;
 }
 
 .chat-header {
@@ -579,7 +596,7 @@ a {
   width: min(44rem, 100%);
   display: flex;
   flex-direction: column;
-  gap: 0.65rem;
+  gap: 0.5rem;
 }
 
 .faq-suggestions-header {
@@ -593,59 +610,80 @@ a {
   color: var(--muted);
 }
 
-.faq-chip-list {
+.faq-pill-list {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  justify-content: center;
+  gap: 0.5rem 0.55rem;
+  justify-content: flex-start;
 }
 
-.faq-chip {
+.faq-pill {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.3rem;
   max-width: 100%;
-  border: 1px solid var(--border);
-  background: var(--panel);
-  color: var(--text-secondary);
+  border: none;
   border-radius: 999px;
-  padding: 0.45rem 0.85rem;
+  padding: 0.4rem 0.85rem;
   font: inherit;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
+  line-height: 1.35;
   cursor: pointer;
-  transition: background 0.12s ease, border-color 0.12s ease;
+  transition: filter 0.12s ease, transform 0.12s ease;
 }
 
-.faq-chip:hover:not(:disabled) {
-  background: var(--panel-hover);
-  border-color: var(--border-strong);
-  color: var(--text);
+.faq-pill:hover:not(:disabled) {
+  filter: brightness(0.96);
 }
 
-.faq-chip:disabled {
+.faq-pill:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.faq-pill:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.faq-hot {
-  font-size: 0.65rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: #fff;
-  background: var(--accent);
-  border-radius: 999px;
-  padding: 0.1rem 0.4rem;
-}
-
-.faq-chip-text {
+.faq-pill-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 18rem;
+  max-width: 22rem;
+}
+
+.faq-hot-emoji {
+  flex-shrink: 0;
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.faq-pill-hot {
+  background: #fde8e4;
+  color: #b54a38;
+}
+
+.faq-pill-teal {
+  background: #e4f5f1;
+  color: #1f7a6e;
+}
+
+.faq-pill-sky {
+  background: #e6f0fb;
+  color: #2f5f9a;
+}
+
+.faq-pill-sage {
+  background: #eaf4e8;
+  color: #3d6b45;
+}
+
+.faq-pill-sand {
+  background: #f3eee6;
+  color: #6b5a45;
 }
 
 .composer-hint {
@@ -1097,4 +1135,190 @@ a {
   .sidebar.sidebar-mobile-open {
     transform: translateX(0);
   }
+}
+
+/* F12 Admin Widget */
+.sidebar-widget-link {
+  margin: 0 1rem 0.75rem;
+  font-size: 0.85rem;
+}
+
+.sidebar-widget-link a {
+  color: var(--accent-strong);
+  text-decoration: none;
+}
+
+.sidebar-widget-link a:hover {
+  text-decoration: underline;
+}
+
+.widget-admin {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 3rem;
+  font-family: var(--font);
+  color: var(--text);
+}
+
+.widget-admin-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  margin-bottom: 1.25rem;
+}
+
+.widget-admin-nav {
+  margin: 0 0 0.35rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.widget-admin-nav a {
+  color: var(--accent-strong);
+  text-decoration: none;
+}
+
+.widget-admin h1 {
+  margin: 0 0 0.35rem;
+  font-size: 1.5rem;
+}
+
+.widget-admin-lead {
+  margin: 0;
+  color: var(--text-secondary);
+  max-width: 36rem;
+  line-height: 1.45;
+}
+
+.widget-admin-error {
+  color: var(--error-fg);
+  margin-bottom: 1rem;
+}
+
+.widget-admin-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.1rem 1.2rem;
+  margin-bottom: 1rem;
+}
+
+.widget-admin-card h2 {
+  margin: 0 0 0.85rem;
+  font-size: 1.05rem;
+}
+
+.widget-admin-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.85rem;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.widget-admin-label input,
+.widget-admin-label textarea {
+  font: inherit;
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 0.55rem 0.7rem;
+  background: #fff;
+}
+
+.widget-admin-snippet {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  background: #f7f8fa;
+  border-radius: var(--radius);
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  white-space: pre-wrap;
+}
+
+.widget-admin-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.widget-admin-item {
+  border-top: 1px solid var(--border);
+  padding-top: 0.85rem;
+}
+
+.widget-admin-item:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.widget-admin-item-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.65rem;
+}
+
+.widget-admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.widget-admin .btn.danger {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+}
+
+.widget-admin .muted {
+  color: var(--muted);
+}
+
+/* F12 harness page — Portal-aligned empty hero; float widget is separate */
+.widget-harness {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2.5rem 1.5rem 6rem;
+  background: var(--bg);
+  font-family: var(--font);
+  color: var(--text);
+}
+
+.widget-harness-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.25rem;
+  width: min(36rem, 100%);
+}
+
+.widget-harness-status {
+  margin: 0;
+  max-width: 28rem;
+  text-align: center;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.widget-harness-status a {
+  color: var(--accent-strong);
+  text-decoration: none;
+}
+
+.widget-harness-status a:hover {
+  text-decoration: underline;
+}
+
+.widget-harness-status[role="alert"] {
+  color: var(--error-fg);
 }

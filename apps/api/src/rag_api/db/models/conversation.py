@@ -20,9 +20,13 @@ class Conversation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey(f"{RAG_SCHEMA}.tenants.tenant_id", ondelete="CASCADE"),
         nullable=False,
     )
-    user_id: Mapped[UUID] = mapped_column(
+    user_id: Mapped[Optional[UUID]] = mapped_column(
         ForeignKey(f"{RAG_SCHEMA}.users.user_id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
+    )
+    site_key_id: Mapped[Optional[UUID]] = mapped_column(
+        ForeignKey(f"{RAG_SCHEMA}.widget_site_keys.id", ondelete="CASCADE"),
+        nullable=True,
     )
     title: Mapped[str] = mapped_column(Text, nullable=False, default="新会话")
     status: Mapped[str] = mapped_column(Text, nullable=False, default="active")

@@ -31,12 +31,17 @@ def maybe_set_title_from_first_message(
     *,
     conversation_id: UUID,
     tenant_id: UUID,
-    user_id: UUID,
+    user_id: UUID | None = None,
+    site_key_id: UUID | None = None,
     user_content: str,
 ) -> str | None:
     """When title is still default, set it from the first user message."""
     conv = get_owned_conversation(
-        db, conversation_id=conversation_id, tenant_id=tenant_id, user_id=user_id
+        db,
+        conversation_id=conversation_id,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        site_key_id=site_key_id,
     )
     if conv.title != DEFAULT_TITLE:
         return None
@@ -61,13 +66,19 @@ def create_conversation(
     db: Session,
     *,
     tenant_id: UUID,
-    user_id: UUID,
+    user_id: UUID | None = None,
+    site_key_id: UUID | None = None,
     title: str | None,
 ) -> Conversation:
-    """Create an active conversation for the user within the tenant."""
+    if (user_id is None) == (site_key_id is None):
+        raise HTTPException(
+            status_code=500,
+            detail="Conversation requires exactly one of user_id or site_key_id",
+        )
     conv = Conversation(
         tenant_id=tenant_id,
         user_id=user_id,
+        site_key_id=site_key_id,
         title=(title.strip() if title and title.strip() else DEFAULT_TITLE),
         status="active",
     )
@@ -110,7 +121,6 @@ def list_conversations(
     user_id: UUID,
     status: str,
 ) -> list[Conversation]:
-    """List non-deleted conversations for the user filtered by status."""
     if status not in ("active", "archived"):
         raise HTTPException(status_code=422, detail="Invalid status")
     stmt = (
@@ -131,20 +141,53 @@ def get_owned_conversation(
     *,
     conversation_id: UUID,
     tenant_id: UUID,
-    user_id: UUID,
+    user_id: UUID | None = None,
+    site_key_id: UUID | None = None,
 ) -> Conversation:
-    """Load a user-owned conversation in the tenant; 404 if missing."""
-    conv = db.scalar(
-        select(Conversation).where(
-            Conversation.id == conversation_id,
-            Conversation.tenant_id == tenant_id,
-            Conversation.user_id == user_id,
-            Conversation.deleted_at.is_(None),
+    if (user_id is None) == (site_key_id is None):
+        raise HTTPException(
+            status_code=500,
+            detail="Ownership requires exactly one of user_id or site_key_id",
         )
-    )
+    filters = [
+        Conversation.id == conversation_id,
+        Conversation.tenant_id == tenant_id,
+        Conversation.deleted_at.is_(None),
+    ]
+    if user_id is not None:
+        filters.append(Conversation.user_id == user_id)
+    else:
+        filters.append(Conversation.site_key_id == site_key_id)
+    conv = db.scalar(select(Conversation).where(*filters))
     if conv is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
     return conv
+
+
+def resolve_conversation_for_widget_message(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    site_key_id: UUID,
+    conversation_id: UUID | None,
+    content: str,
+) -> UUID:
+    """F12: use existing widget conversation or create one for first send."""
+    if conversation_id is not None:
+        get_owned_conversation(
+            db,
+            conversation_id=conversation_id,
+            tenant_id=tenant_id,
+            site_key_id=site_key_id,
+        )
+        return conversation_id
+    conv = create_conversation(
+        db,
+        tenant_id=tenant_id,
+        site_key_id=site_key_id,
+        title=derive_title_from_message(content),
+    )
+    return conv.id
 
 
 def archive_conversation(
@@ -154,7 +197,6 @@ def archive_conversation(
     tenant_id: UUID,
     user_id: UUID,
 ) -> Conversation:
-    """Mark an active conversation archived; 409 if not active."""
     conv = get_owned_conversation(
         db, conversation_id=conversation_id, tenant_id=tenant_id, user_id=user_id
     )
@@ -173,7 +215,6 @@ def unarchive_conversation(
     tenant_id: UUID,
     user_id: UUID,
 ) -> Conversation:
-    """Restore an archived conversation to active; 409 if not archived."""
     conv = get_owned_conversation(
         db, conversation_id=conversation_id, tenant_id=tenant_id, user_id=user_id
     )
@@ -192,7 +233,6 @@ def soft_delete_conversation(
     tenant_id: UUID,
     user_id: UUID,
 ) -> None:
-    """Set ``deleted_at`` on an owned conversation."""
     conv = get_owned_conversation(
         db, conversation_id=conversation_id, tenant_id=tenant_id, user_id=user_id
     )
@@ -208,7 +248,6 @@ def rename_conversation(
     user_id: UUID,
     title: str,
 ) -> Conversation:
-    """Update conversation title; 422 if title is empty after trim."""
     conv = get_owned_conversation(
         db, conversation_id=conversation_id, tenant_id=tenant_id, user_id=user_id
     )
@@ -226,11 +265,15 @@ def list_messages(
     *,
     conversation_id: UUID,
     tenant_id: UUID,
-    user_id: UUID,
+    user_id: UUID | None = None,
+    site_key_id: UUID | None = None,
 ) -> list[Message]:
-    """List messages in an owned conversation ordered by ``create_at``."""
     get_owned_conversation(
-        db, conversation_id=conversation_id, tenant_id=tenant_id, user_id=user_id
+        db,
+        conversation_id=conversation_id,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        site_key_id=site_key_id,
     )
     stmt = (
         select(Message)
@@ -248,14 +291,18 @@ def add_message(
     *,
     conversation_id: UUID,
     tenant_id: UUID,
-    user_id: UUID,
+    user_id: UUID | None = None,
+    site_key_id: UUID | None = None,
     role: str,
     content: str,
     meta: dict | None,
 ) -> Message:
-    """Append a message to an active conversation; 409 if archived."""
     conv = get_owned_conversation(
-        db, conversation_id=conversation_id, tenant_id=tenant_id, user_id=user_id
+        db,
+        conversation_id=conversation_id,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        site_key_id=site_key_id,
     )
     if conv.status != "active":
         raise HTTPException(status_code=409, detail="Cannot add message to archived conversation")

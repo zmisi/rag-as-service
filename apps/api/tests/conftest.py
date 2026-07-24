@@ -26,6 +26,7 @@ from rag_api.db.models import (
     Tenant,
     TenantMember,
     User,
+    WidgetSiteKey,
 )
 from rag_api.domain.identity.password import hash_password
 from rag_api.ingestion.search import FakeKnowledgeSearcher
@@ -161,6 +162,9 @@ def tenants(db: Session) -> dict:
     db.execute(delete(AgentRun).where(AgentRun.tenant_id.in_(test_tenant_ids)))
     db.execute(
         delete(Conversation).where(Conversation.tenant_id.in_(test_tenant_ids))
+    )
+    db.execute(
+        delete(WidgetSiteKey).where(WidgetSiteKey.tenant_id.in_(test_tenant_ids))
     )
     db.execute(
         delete(FaqSuggestionStats).where(

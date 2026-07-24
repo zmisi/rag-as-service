@@ -20,7 +20,8 @@ class ConversationUpdate(BaseModel):
 class ConversationOut(BaseModel):
     id: UUID
     tenant_id: UUID
-    user_id: UUID
+    user_id: Optional[UUID] = None
+    site_key_id: Optional[UUID] = None
     title: str
     status: Literal["active", "archived"]
     create_at: datetime
