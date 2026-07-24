@@ -239,7 +239,7 @@ def test_f08_t05_t06_version_unique(db: Session) -> None:
 
 @pytest.mark.integration
 def test_f08_t07_doc_size_and_names(client_a, db: Session, tenants: dict) -> None:
-    headers = tenant_host_headers("tenant-a")
+    headers = tenant_host_headers("pytest-a")
     created = client_a.post("/v1/documents", headers=headers)
     assert created.status_code == 201
     doc_id = created.json()["id"]
@@ -284,12 +284,12 @@ def test_f08_t08_search_uses_renamed_columns(db: Session, tmp_path) -> None:
 
 @pytest.mark.integration
 def test_f08_t09_cross_tenant_isolation(client_a, switch_to_b, tenants: dict) -> None:
-    headers_a = tenant_host_headers("tenant-a")
+    headers_a = tenant_host_headers("pytest-a")
     created = client_a.post("/v1/documents", headers=headers_a)
     assert created.status_code == 201
     doc_id = created.json()["id"]
     client_b = switch_to_b()
-    headers_b = tenant_host_headers("tenant-b")
+    headers_b = tenant_host_headers("pytest-b")
     r = client_b.get(f"/v1/documents/{doc_id}", headers=headers_b)
     assert r.status_code in (403, 404)
 

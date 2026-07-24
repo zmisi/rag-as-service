@@ -11,6 +11,8 @@ alwaysApply: true
 apps/
   api/          # FastAPI：业务、鉴权、索引 worker、RAG Agent；含 prompts/
   web/          # 独立 Next.js（App Router）前端
+    public/brand-cube.png   # 项目品牌图标（favicon / Portal hero 同源）
+    app/icon.png            # Next App Router favicon（与 brand-cube 同步）
 deploy/         # Caddy/nginx、compose
 scripts/        # 运维与本地辅助脚本（非业务热路径）
 docs/specs/     # Feature Spec
@@ -18,6 +20,7 @@ docs/specs/     # Feature Spec
 ```
 
 - 新代码放入对应 app；禁止在仓库根散落业务包。
+- 品牌图标见 `00-constraints` §3.0a；改图时须同步 `public/brand-cube.png` 与 `app/icon.png` / `app/apple-icon.png`。
 - Agent 提示词放 `apps/api/prompts/`（版本化文本），由 `agent/` 加载；不要塞进根目录 `scripts/`。
 - Phase 1 对象存储：本地目录 `apps/api/var/storage/`（gitignore）；路径经配置注入，业务代码不写死机器绝对路径。
 - 索引任务：DB 表 `index_job` + `apps/api` 内 worker 进程消费（Phase 1 不用 Celery/独立消息中间件）。

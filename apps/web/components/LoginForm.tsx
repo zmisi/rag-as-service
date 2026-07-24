@@ -91,7 +91,7 @@ export function LoginForm() {
         </p>
       ) : null}
 
-      <button type="submit" disabled={submitting}>
+      <button type="submit" className="btn primary" disabled={submitting}>
         {submitting ? "登录中…" : "登录"}
       </button>
     </form>

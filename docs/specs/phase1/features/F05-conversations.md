@@ -22,6 +22,7 @@
 - Agent 推理、检索、工具调用（F06）
 - 匿名公开访客聊天（不做）
 - 会话导出、分享链接
+- Portal 壳层 UI、空态主页、New task **延迟创建**会话（见 Phase 2 [F14](../../phase2/features/F14-portal-shell.md)：`POST /v1/conversations/messages` 允许 `conversation_id` 缺省）；本 Feature 的显式 `POST /v1/conversations` 仍保留
 
 ## Flow
 

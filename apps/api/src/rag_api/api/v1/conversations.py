@@ -1,4 +1,4 @@
-"""F05 conversation routes (+ F06 Agent Loop on POST user message)."""
+"""F05 conversation routes (+ F06 Agent Loop; F14 deferred first message)."""
 
 from __future__ import annotations
 
@@ -26,6 +26,7 @@ from rag_api.api.schemas.conversations import (
     ConversationUpdate,
     MessageCreate,
     MessageOut,
+    PortalMessageCreate,
     TurnReply,
 )
 from rag_api.clients.llm import LlmClient
@@ -59,6 +60,124 @@ def list_conversations(
         db, tenant_id=auth.tenant_id, user_id=auth.user_id, status=status_filter
     )
     return [ConversationOut.model_validate(c) for c in items]
+
+
+@router.post(
+    "/messages",
+    response_model=TurnReply,
+    status_code=status.HTTP_201_CREATED,
+)
+def post_portal_message(
+    body: PortalMessageCreate,
+    response: Response,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(require_tenant_member),
+    llm: LlmClient = Depends(get_llm_client),
+    searcher: KnowledgeSearcher = Depends(get_knowledge_searcher),
+) -> TurnReply:
+    """F14: optional conversation_id; null → create conversation + first message."""
+    if body.role != "user":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Only role=user triggers Agent Loop; clients must send user messages",
+        )
+    conversation_id = conv_svc.resolve_conversation_for_portal_message(
+        db,
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        conversation_id=body.conversation_id,
+        content=body.content,
+    )
+    turn = run_user_turn(
+        db,
+        conversation_id=conversation_id,
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        content=body.content,
+        llm=llm,
+        searcher=searcher,
+    )
+    response.headers["Server-Timing"] = f"turn;dur={turn.server_ms:.1f}"
+    response.headers["X-Turn-Duration-Ms"] = f"{turn.server_ms:.1f}"
+    return _turn_to_reply(turn, conversation_id=conversation_id)
+
+
+@router.post("/messages/stream")
+def post_portal_message_stream(
+    body: PortalMessageCreate,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(require_tenant_member),
+    llm: LlmClient = Depends(get_llm_client),
+    searcher: KnowledgeSearcher = Depends(get_knowledge_searcher),
+) -> StreamingResponse:
+    """F14 streaming entry with optional conversation_id."""
+    if body.role != "user":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Only role=user triggers Agent Loop; clients must send user messages",
+        )
+    conversation_id = conv_svc.resolve_conversation_for_portal_message(
+        db,
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        conversation_id=body.conversation_id,
+        content=body.content,
+    )
+    session_factory = get_session_factory()
+    tenant_id = auth.tenant_id
+    user_id = auth.user_id
+    content = body.content
+
+    def _run_turn():
+        turn_db = session_factory()
+        try:
+            return run_user_turn(
+                turn_db,
+                conversation_id=conversation_id,
+                tenant_id=tenant_id,
+                user_id=user_id,
+                content=content,
+                llm=llm,
+                searcher=searcher,
+            )
+        finally:
+            turn_db.close()
+
+    future = _STREAM_EXECUTOR.submit(_run_turn)
+
+    def _events():
+        started = time.perf_counter()
+        yield _sse("started", {"conversation_id": str(conversation_id)})
+        while not future.done():
+            elapsed_ms = (time.perf_counter() - started) * 1000.0
+            yield _sse(
+                "progress",
+                {
+                    "stage": "agent_loop",
+                    "elapsed_ms": round(elapsed_ms, 1),
+                },
+            )
+            time.sleep(0.5)
+        try:
+            turn = future.result()
+        except Exception as exc:  # noqa: BLE001
+            yield _sse("error", {"message": str(exc)})
+            return
+        payload = _turn_to_reply(turn, conversation_id=conversation_id).model_dump(
+            mode="json"
+        )
+        payload["server_ms"] = round(turn.server_ms, 1)
+        yield _sse("done", payload)
+
+    return StreamingResponse(
+        _events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post("/{conversation_id}/archive", response_model=ConversationOut)
@@ -166,10 +285,9 @@ def post_message(
         llm=llm,
         searcher=searcher,
     )
-    # Expose server-side wall time so the browser can compare RTT vs processing.
     response.headers["Server-Timing"] = f"turn;dur={turn.server_ms:.1f}"
     response.headers["X-Turn-Duration-Ms"] = f"{turn.server_ms:.1f}"
-    return _turn_to_reply(turn)
+    return _turn_to_reply(turn, conversation_id=conversation_id)
 
 
 @router.post("/{conversation_id}/messages/stream")
@@ -188,10 +306,10 @@ def post_message_stream(
     session_factory = get_session_factory()
 
     def _run_turn():
-        db = session_factory()
+        turn_db = session_factory()
         try:
             return run_user_turn(
-                db,
+                turn_db,
                 conversation_id=conversation_id,
                 tenant_id=auth.tenant_id,
                 user_id=auth.user_id,
@@ -200,7 +318,7 @@ def post_message_stream(
                 searcher=searcher,
             )
         finally:
-            db.close()
+            turn_db.close()
 
     future = _STREAM_EXECUTOR.submit(_run_turn)
 
@@ -222,7 +340,9 @@ def post_message_stream(
         except Exception as exc:  # noqa: BLE001
             yield _sse("error", {"message": str(exc)})
             return
-        payload = _turn_to_reply(turn).model_dump(mode="json")
+        payload = _turn_to_reply(turn, conversation_id=conversation_id).model_dump(
+            mode="json"
+        )
         payload["server_ms"] = round(turn.server_ms, 1)
         yield _sse("done", payload)
 
@@ -241,7 +361,8 @@ def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-def _turn_to_reply(turn) -> TurnReply:
+def _turn_to_reply(turn, *, conversation_id: UUID | None = None) -> TurnReply:
+    cid = conversation_id or turn.user.conversation_id
     return TurnReply(
         user=MessageOut.model_validate(turn.user),
         assistant=MessageOut.model_validate(turn.assistant),
@@ -249,4 +370,5 @@ def _turn_to_reply(turn) -> TurnReply:
         used_search=turn.agent_run.used_search,
         status=turn.agent_run.status,  # type: ignore[arg-type]
         conversation_title=turn.conversation_title,
+        conversation_id=cid,
     )

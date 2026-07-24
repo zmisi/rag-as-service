@@ -76,6 +76,32 @@ def create_conversation(
     return conv
 
 
+def resolve_conversation_for_portal_message(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    user_id: UUID,
+    conversation_id: UUID | None,
+    content: str,
+) -> UUID:
+    """F14: use existing conversation or create one for draft first send."""
+    if conversation_id is not None:
+        get_owned_conversation(
+            db,
+            conversation_id=conversation_id,
+            tenant_id=tenant_id,
+            user_id=user_id,
+        )
+        return conversation_id
+    conv = create_conversation(
+        db,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        title=derive_title_from_message(content),
+    )
+    return conv.id
+
+
 def list_conversations(
     db: Session,
     *,

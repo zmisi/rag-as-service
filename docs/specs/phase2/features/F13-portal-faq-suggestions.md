@@ -4,23 +4,24 @@
 
 | 字段 | 值 |
 |------|-----|
-| **Status** | `draft` |
+| **Status** | `done` |
 | **Owner** | |
 | **Approved by** | |
-| **Approved at** | |
+| **Approved at** | 2026-07-24 |
 
 > Status：`draft` → `review` → `approved` → `done`。未 `approved` 不得实现，见 [00-constraints.mdc](../../../../.cursor/rules/00-constraints.mdc) §8。
 
 ## 范围
 
-- Portal 首屏/聊天区旁展示 **N=5** 条 FAQ 建议题
+- Portal 首屏/聊天区旁展示 **N=5** 条 FAQ 建议题（**布局壳、空态、Composer 归属 [F14](F14-portal-shell.md)**）
 - 数据源：本租户 **published** 且 `tag=faq` 的 latest 文档（题面优先 `title`；可选截断摘要）
 - 排序：按 **点击次数** 降序；**第 1 条展示 `hot` 标签**
 - 「换一批」：在候选池中翻页/洗牌下一批（固定：**按热度序的下一段 5 条**；不足则从头循环）
-- 点击某 FAQ：计入热度 +1，并预填/发送为用户问题进入 F06 会话
+- 点击某 FAQ：计入热度 +1，并预填/发送为用户问题进入 F06 会话（draft 态下的落库时机见 F14）
 
 ## 非范围
 
+- Portal 整体布局 / 色调 / New task 延迟会话（F14）
 - 人工置顶运营位（除热度自然排序外）
 - 非 faq tag 文档进入推荐池
 - 跨租户热度

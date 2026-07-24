@@ -88,6 +88,22 @@ export type TurnReply = {
   used_search: boolean;
   status: "completed" | "truncated" | "error";
   conversation_title?: string | null;
+  conversation_id?: string | null;
+};
+
+export type FaqSuggestion = {
+  document_group_id: string;
+  document_id: string;
+  question: string;
+  click_count: number;
+  hot: boolean;
+};
+
+export type FaqClickResult = {
+  document_group_id: string;
+  document_id: string;
+  question: string;
+  click_count: number;
 };
 
 type StreamEvent =
@@ -226,24 +242,31 @@ export async function postMessage(conversationId: string, content: string) {
 }
 
 export async function postMessageStream(
-  conversationId: string,
+  conversationId: string | null,
   content: string,
   options?: PostMessageStreamOptions,
 ): Promise<TurnReply> {
   const t0 = performance.now();
-  const res = await fetch(`/backend/v1/conversations/${conversationId}/messages/stream`, {
+  /** F14: collection route when draft (null id); else legacy path-id stream. */
+  const url = conversationId
+    ? `/backend/v1/conversations/${conversationId}/messages/stream`
+    : `/backend/v1/conversations/messages/stream`;
+  const body = conversationId
+    ? { role: "user", content }
+    : { role: "user", content, conversation_id: null };
+  const res = await fetch(url, {
     method: "POST",
     credentials: "include",
     headers: {
       ...authHeaders(),
     },
-    body: JSON.stringify({ role: "user", content }),
+    body: JSON.stringify(body),
   });
   if (!res.ok || !res.body) {
     let detail = res.statusText;
     try {
-      const body = await res.json();
-      if (typeof body?.detail === "string") detail = body.detail;
+      const errBody = await res.json();
+      if (typeof errBody?.detail === "string") detail = errBody.detail;
     } catch {
       /* ignore */
     }
@@ -254,6 +277,7 @@ export async function postMessageStream(
   const decoder = new TextDecoder();
   let buffer = "";
   let doneTurn: TurnReply | null = null;
+  let resolvedId = conversationId;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -265,6 +289,7 @@ export async function postMessageStream(
       const parsed = parseSse(raw);
       if (!parsed) continue;
       if (parsed.event === "started") {
+        resolvedId = parsed.data.conversation_id;
         options?.onStarted?.(parsed.data.conversation_id);
       } else if (parsed.event === "progress") {
         options?.onProgress?.(parsed.data.stage, parsed.data.elapsed_ms);
@@ -279,12 +304,28 @@ export async function postMessageStream(
   if (!doneTurn) {
     throw new Error("stream finished without done event");
   }
+  if (!doneTurn.conversation_id && resolvedId) {
+    doneTurn = { ...doneTurn, conversation_id: resolvedId };
+  }
   console.info(
-    `[timing] chat.stream done conversation_id=${conversationId} ` +
+    `[timing] chat.stream done conversation_id=${doneTurn.conversation_id ?? resolvedId} ` +
       `client_total_ms=${(performance.now() - t0).toFixed(1)} ` +
       `status=${doneTurn.status} used_search=${doneTurn.used_search}`,
   );
   return doneTurn;
+}
+
+export function listFaqSuggestions(offset = 0) {
+  return api<FaqSuggestion[]>(
+    `/portal/faq-suggestions?offset=${encodeURIComponent(String(offset))}`,
+  );
+}
+
+export function clickFaqSuggestion(documentGroupId: string) {
+  return api<FaqClickResult>(
+    `/portal/faq-suggestions/${documentGroupId}/click`,
+    { method: "POST" },
+  );
 }
 
 function parseSse(raw: string): StreamEvent | null {
