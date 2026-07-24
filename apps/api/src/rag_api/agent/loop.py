@@ -59,6 +59,8 @@ class AgentLoop:
         used_search = False
         pending_tools: list[dict[str, Any]] = []
         step_count = 0
+        # One-shot recovery when model claims no-hit without calling search.
+        harness_forced_search_done = False
         loop_t0 = time.perf_counter()
         log_agent(
             "loop.start",
@@ -138,9 +140,35 @@ class AgentLoop:
                     content=snip(result.content, 400),
                 )
 
-                if result.tool_calls:
+                tool_calls = list(result.tool_calls)
+                harness_forced = False
+                if not tool_calls:
+                    reply_probe = (result.content or "").strip()
+                    if (
+                        NO_HIT_PHRASE in reply_probe
+                        and not used_search
+                        and not harness_forced_search_done
+                        and step_count < MAX_STEPS
+                    ):
+                        harness_forced_search_done = True
+                        harness_forced = True
+                        tool_calls = [
+                            ToolCall(
+                                id=f"harness-search-{step_count}",
+                                name=TOOL_SEARCH_KNOWLEDGE,
+                                arguments={"query": user_content},
+                            )
+                        ]
+                        log_agent(
+                            "loop.grounding.force_search",
+                            step=step_count,
+                            reason="premature_no_hit",
+                            query=snip(user_content, 200),
+                        )
+
+                if tool_calls:
                     # Execute first tool call per step (Phase 1 simple harness)
-                    tc = result.tool_calls[0]
+                    tc = tool_calls[0]
                     log_agent(
                         "loop.tool.request",
                         step=step_count,
@@ -148,6 +176,7 @@ class AgentLoop:
                         tool_call_id=tc.id,
                         arguments=dump_json(tc.arguments, 500),
                         whitelist_ok=int(tc.name in (TOOL_SEARCH_KNOWLEDGE,)),
+                        harness_forced=int(harness_forced),
                     )
                     if tc.name not in (TOOL_SEARCH_KNOWLEDGE,) and tc.name:
                         # Whitelist violation: terminate without executing
@@ -240,7 +269,8 @@ class AgentLoop:
                     pending_tools.append(
                         {
                             "role": "assistant",
-                            "content": result.content or "",
+                            # Drop premature no-hit text when harness injects the tool call.
+                            "content": "" if harness_forced else (result.content or ""),
                             "tool_calls": [
                                 {
                                     "id": tc.id,

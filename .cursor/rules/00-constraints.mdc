@@ -9,16 +9,16 @@ alwaysApply: true
 
 ## 1. 域名与路由
 
-| 表面 | 用途 | Phase 1 |
-|------|------|---------|
-| `lxzxai.com` | 主站：注册、登录 | 是 |
-| `{subdomain}.lxzxai.com` | 租户服务入口（RAG 聊天） | 是 |
-| `{subdomain}.lxzxai.com/admin` | 租户文档管理 | 是 |
-| `{subdomain}.lxzxai.com/api` | 对外 API 整合网关 | **否**（Phase 2） |
+| 表面 | 用途 | Phase 1 | Phase 2 |
+|------|------|---------|---------|
+| `lxzxai.com` | 主站：注册、登录 | 是 | 是 |
+| `{subdomain}.lxzxai.com` | 租户服务入口（RAG 聊天 / Portal） | 是 | 是（FAQ 推荐等增强） |
+| `{subdomain}.lxzxai.com/admin` | 租户文档管理 | 是 | 是（文件夹树、预览） |
+| `{subdomain}.lxzxai.com/api` | 对外 API 整合网关 | **否** | **是** |
 
 - 不再使用 `lxtechai.com`。
 - Host 解析到租户：`subdomain` → `tenant_id`；未知 subdomain → 404。
-- 租户根路径 = 聊天入口；`/admin` = 管理端。
+- 租户根路径 = 聊天入口（Portal）；`/admin` = 管理端；`/api` = 对外整合（见 Phase 2 F11）。
 
 ## 2. 多租户与子域
 
@@ -77,19 +77,21 @@ alwaysApply: true
 4. Feature Spec「数据与边界」中可省略这两列的重复罗列；**未写不等于不存在**——建表时一律带上。
 5. 迁移/schema 测试须能证明：任意表 insert 后两列非空且接近当前时间；update 后仅 `update_at` 前进、`create_at` 不变。
 
-## 4. 认证（Phase 1）
+## 4. 认证
 
-- Phase 1 **仅 Email** 注册与登录。
-- 微信登录：**不做验收**；可留接口位，标 Phase 1.5（见 [phase2/README.md](../../docs/specs/phase2/README.md)）。
+- Phase 1 **仅 Email** 注册与登录（会话 cookie）。
+- 微信登录：**不做验收**；标 **Phase 3**（见 [01-phase-list.md](../../docs/specs/01-phase-list.md)）。
 - 会话：cookie `Domain=.lxzxai.com`；主站与 `{subdomain}.lxzxai.com`（含 `/admin`）同一会话族。
+- Phase 2 对外 API：租户 **API Key**（Bearer）；Embed Widget：公开 **site key** + Origin 白名单（见 F11/F12）。与成员 cookie 会话分离。
 
 ## 5. 文档与索引
 
 - 文档状态机：`draft` → `review` → `published`（细节见 F03）。
 - **仅 `published` 文档进入索引**（F04）；未发布文档不可被 RAG 检索（F06）。
-- Phase 1 的 `review` 是可测状态，**不做 SOP 内容强制校验**（SOP 门禁属 Phase 2）。
-- 支持类型：`.txt` / `.md` / `.pdf` / `.docx` / `.pptx`（不支持旧版 `.doc` / `.ppt`）。
-- 版本从 `1.0` 起。
+- `review` 是可测状态，**不做 SOP 内容强制校验**（SOP 门禁属 **Phase 3**）。
+- Phase 1 类型：`.txt` / `.md` / `.pdf`（不支持旧版 `.doc` / `.ppt` / `.xls`）。
+- Phase 2 Office OOXML（`.docx` / `.xlsx` / `.pptx`）上传与索引：见 F08。
+- 版本从整数 `1` 起（展示 `v1`）；见 F03/F07。
 
 ## 6. Agent（Phase 1）
 
@@ -97,12 +99,24 @@ alwaysApply: true
 - LLM 调用使用 QWen。
 - Agent Loop（无前置意图分类）、上下文组装、记忆压缩、工具调用：见 F06。
 
-## 7. Phase 1 明确不做
+## 7. Phase 边界（摘要）
 
-- 微信登录验收
-- SOP 必须验证成功才能上传/发布
-- `{subdomain}.lxzxai.com/api` 对外整合网关
+### Phase 1 明确不做（仍成立）
+
+- 微信登录验收（Phase 3）
+- SOP 必须验证成功才能上传/发布（Phase 3）
 - 跨租户共享知识库
+
+### Phase 2 范围（见 [phase2/](../../docs/specs/phase2/)）
+
+- Office OOXML（`.docx` / `.xlsx` / `.pptx`）上传与索引
+- Admin 文件夹树、文档预览
+- `{subdomain}.lxzxai.com/api` + API Key；Embed Widget
+- Portal FAQ 推荐（热度 / 换一批）
+
+### Phase 3 预留
+
+- 微信登录、SOP 强制验证门禁；OCR / 任意深标题树等增强
 
 ## 8. Feature 状态（实现门禁）
 
@@ -126,4 +140,4 @@ alwaysApply: true
 
 - Feature 是最小交付单位。
 - **唯一验收标准**：该 Feature Spec 中的 Test Cases 全部通过。
-- 无对应 Test Case 的行为，不算 Phase 1 范围。
+- 无对应 Test Case 的行为，不算该 Phase 范围。

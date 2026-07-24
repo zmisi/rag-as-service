@@ -21,13 +21,17 @@ SEARCH_KNOWLEDGE_SCHEMA: dict[str, Any] = {
     "type": "function",
     "function": {
         "name": TOOL_SEARCH_KNOWLEDGE,
-        "description": "Search the current tenant knowledge base for relevant document chunks.",
+        "description": (
+            "检索当前租户知识库中与问题相关的文档片段。"
+            "回答任何知识库/文档相关问题前必须先调用本工具；"
+            "未调用前不得声称知识库无相关内容。"
+        ),
         "parameters": {
             "type": "object",
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "Search query derived from the user question",
+                    "description": "根据用户问题改写的检索词",
                 }
             },
             "required": ["query"],

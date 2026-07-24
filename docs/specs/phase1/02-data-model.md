@@ -316,7 +316,7 @@ erDiagram
 
 ### 4.6 `document_files` — 文档源文件
 
-**表注释**：文档版本关联的存储对象；`doc_id` FK → **版本行** `documents.doc_id`；单文件 ≤20MB；类型限 `.txt`/`.pdf`/`.docx`/`.pptx`（不含旧版 `.doc`/`.ppt`）。
+**表注释**：文档版本关联的存储对象；`doc_id` FK → **版本行** `documents.doc_id`；单文件 ≤20MB；Phase 1 类型限 `.txt`/`.md`/`.pdf`（不含旧版 `.doc`/`.ppt`）；Office OOXML（`.docx`/`.xlsx`/`.pptx`）见 Phase 2 F08。
 
 | 字段 | 类型 | 约束 | 注释 |
 |------|------|------|------|
@@ -337,7 +337,7 @@ erDiagram
 
 ### 4.7 `index_jobs` — 索引任务
 
-**表注释**：文档版本 publish 后的异步索引队列；`doc_id` FK → **版本行**；worker 抢占；同步推进 `documents.index_status`。
+**表注释**：文档版本 publish 后的异步索引队列；`doc_id` FK → **版本行**；由 api worker 以 `FOR UPDATE SKIP LOCKED` 抢占；Phase 1 无独立消息中间件。Worker 同步推进该版本 `documents.index_status`：`pending`→`processing`→`ready`/`failed`。
 
 | 字段 | 类型 | 约束 | 注释 |
 |------|------|------|------|
@@ -566,3 +566,4 @@ erDiagram
 | 2026-07-23 | F08：五表显式列命名；`tenant_name`；`user_name`/`active`；成员保留 `user_id`；`doc_*`/`version_number`/`source_metadata`/`doc_size`；chunks `chunk_id`/`doc_id` |
 | 2026-07-23 | 清理冗余索引：去掉 `documents` 的 `ix_*`、`document_chunks_*` 二级索引、`agent_run_steps_run_index_idx` |
 | 2026-07-23 | 去掉 `uk_documents_tenant_group_latest` 与 `documents.source_key`；审计列（`created_by`/`deleted_at`/`create_at`/`update_at`）统一置表末 |
+| 2026-07-24 | 合并 Phase 2 说明：`document_files` 类型边界（Phase 1 文本/PDF；OOXML→Phase 2 F08）；`index_jobs` worker `SKIP LOCKED` 表述；列名保持 Phase 1 F08（`doc_id`） |

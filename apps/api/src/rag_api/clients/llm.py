@@ -18,7 +18,12 @@ logger = logging.getLogger(__name__)
 _QWEN_HTTP_CLIENT = httpx.Client(
     http2=False,
     timeout=LLM_TIMEOUT_S,
-    limits=httpx.Limits(max_keepalive_connections=20, max_connections=100),
+    # Short keepalive: stale pooled TLS sockets often surface as UNEXPECTED_EOF.
+    limits=httpx.Limits(
+        max_keepalive_connections=10,
+        max_connections=50,
+        keepalive_expiry=5.0,
+    ),
 )
 
 
@@ -86,6 +91,10 @@ def _sanitize_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
 class QwenClient:
     """OpenAI-compatible chat completions against DashScope / QWen."""
 
+    # Transient TLS / connection drops are common against DashScope; retry briefly.
+    _TRANSIENT_ATTEMPTS = 3
+    _TRANSIENT_BACKOFF_S = (0.4, 0.8)
+
     def __init__(self, settings: Settings | None = None) -> None:
         self._settings = settings or get_settings()
 
@@ -133,51 +142,76 @@ class QwenClient:
             tools=tools,
         )
         t0 = time.perf_counter()
-        try:
-            # Keep a process-level client to reuse TLS connections across turns.
-            resp = _QWEN_HTTP_CLIENT.post(url, headers=headers, json=body)
-            http_ms = (time.perf_counter() - t0) * 1000.0
-            resp.raise_for_status()
-            raw = resp.text
-        except httpx.HTTPStatusError as exc:
-            http_ms = (time.perf_counter() - t0) * 1000.0
-            detail = exc.response.text[:500] if exc.response is not None else ""
-            code = exc.response.status_code if exc.response is not None else "?"
-            logger.warning(
-                "QWen HTTP %s after %.1fms: %s", code, http_ms, detail or exc
-            )
-            log_system_call(
-                "dashscope",
-                "chat.completions.error",
-                http_ms=f"{http_ms:.1f}",
-                status=code,
-                detail=detail or str(exc),
-            )
-            raise LlmTimeoutError(f"QWen HTTP {code}: {detail or exc}") from exc
-        except httpx.TimeoutException as exc:
-            http_ms = (time.perf_counter() - t0) * 1000.0
-            logger.warning("QWen request timed out after %.1fms: %s", http_ms, exc)
-            log_system_call(
-                "dashscope",
-                "chat.completions.timeout",
-                http_ms=f"{http_ms:.1f}",
-                error=str(exc),
-            )
-            raise LlmTimeoutError(f"QWen request timed out: {exc}") from exc
-        except httpx.RequestError as exc:
-            http_ms = (time.perf_counter() - t0) * 1000.0
-            logger.warning("QWen request failed after %.1fms: %s", http_ms, exc)
-            log_system_call(
-                "dashscope",
-                "chat.completions.request_error",
-                http_ms=f"{http_ms:.1f}",
-                error=str(exc),
-            )
-            raise LlmTimeoutError(f"QWen request failed: {exc}") from exc
-        except Exception as exc:  # noqa: BLE001 — never leak network errors as 500
-            http_ms = (time.perf_counter() - t0) * 1000.0
-            logger.exception("QWen unexpected failure after %.1fms", http_ms)
-            raise LlmTimeoutError(f"QWen unexpected failure: {exc}") from exc
+        raw = ""
+        http_ms = 0.0
+        last_request_error: httpx.RequestError | None = None
+        for attempt in range(1, self._TRANSIENT_ATTEMPTS + 1):
+            try:
+                # Keep a process-level client to reuse TLS connections across turns.
+                resp = _QWEN_HTTP_CLIENT.post(url, headers=headers, json=body)
+                http_ms = (time.perf_counter() - t0) * 1000.0
+                resp.raise_for_status()
+                raw = resp.text
+                last_request_error = None
+                break
+            except httpx.HTTPStatusError as exc:
+                http_ms = (time.perf_counter() - t0) * 1000.0
+                detail = exc.response.text[:500] if exc.response is not None else ""
+                code = exc.response.status_code if exc.response is not None else "?"
+                logger.warning(
+                    "QWen HTTP %s after %.1fms: %s", code, http_ms, detail or exc
+                )
+                log_system_call(
+                    "dashscope",
+                    "chat.completions.error",
+                    http_ms=f"{http_ms:.1f}",
+                    status=code,
+                    detail=detail or str(exc),
+                )
+                raise LlmTimeoutError(f"QWen HTTP {code}: {detail or exc}") from exc
+            except httpx.TimeoutException as exc:
+                http_ms = (time.perf_counter() - t0) * 1000.0
+                logger.warning("QWen request timed out after %.1fms: %s", http_ms, exc)
+                log_system_call(
+                    "dashscope",
+                    "chat.completions.timeout",
+                    http_ms=f"{http_ms:.1f}",
+                    error=str(exc),
+                )
+                raise LlmTimeoutError(f"QWen request timed out: {exc}") from exc
+            except httpx.RequestError as exc:
+                http_ms = (time.perf_counter() - t0) * 1000.0
+                last_request_error = exc
+                logger.warning(
+                    "QWen request failed after %.1fms (attempt %s/%s): %s",
+                    http_ms,
+                    attempt,
+                    self._TRANSIENT_ATTEMPTS,
+                    exc,
+                )
+                log_system_call(
+                    "dashscope",
+                    "chat.completions.request_error",
+                    http_ms=f"{http_ms:.1f}",
+                    attempt=attempt,
+                    attempts=self._TRANSIENT_ATTEMPTS,
+                    error=str(exc),
+                )
+                if attempt >= self._TRANSIENT_ATTEMPTS:
+                    break
+                backoff = self._TRANSIENT_BACKOFF_S[
+                    min(attempt - 1, len(self._TRANSIENT_BACKOFF_S) - 1)
+                ]
+                time.sleep(backoff)
+            except Exception as exc:  # noqa: BLE001 — never leak network errors as 500
+                http_ms = (time.perf_counter() - t0) * 1000.0
+                logger.exception("QWen unexpected failure after %.1fms", http_ms)
+                raise LlmTimeoutError(f"QWen unexpected failure: {exc}") from exc
+
+        if last_request_error is not None:
+            raise LlmTimeoutError(
+                f"QWen request failed: {last_request_error}"
+            ) from last_request_error
 
         try:
             payload = json.loads(raw)
