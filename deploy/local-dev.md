@@ -47,7 +47,7 @@ docker compose -f deploy/docker-compose.yml build \
   --build-arg PIP_TRUSTED_HOST=pypi.tuna.tsinghua.edu.cn \
   api 
 
-docker compose -f deploy/docker-compose.yml up -d --force-recreate api web index_worker 
+docker compose -f deploy/docker-compose.yml up -d --force-recreate api web index-worker 
 
 # 查看详细日志
 # 只看 API（索引 / parse_route / 报错最常用）

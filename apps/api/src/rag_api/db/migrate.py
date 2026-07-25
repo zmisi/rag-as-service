@@ -53,7 +53,9 @@ def run_migrations(*, database_url: str | None = None) -> None:
                 conn,
                 opts={"version_table_schema": "rag_service"},
             )
-            current = ctx.get_current_revision()
+            # Multiple branch tips may be present until a merge revision lands.
+            currents = list(ctx.get_current_heads())
+            current = currents[0] if len(currents) == 1 else ",".join(currents) or None
     finally:
         engine.dispose()
 
