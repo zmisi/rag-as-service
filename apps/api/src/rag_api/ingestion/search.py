@@ -10,7 +10,7 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from rag_api.indexing.embedding import Embedder, get_embedder
+from rag_api.ingestion.embedding import Embedder, get_embedder
 from rag_api.observability.agent_log import log_system_call, snip
 
 logger = logging.getLogger(__name__)
@@ -166,7 +166,7 @@ class PgKnowledgeSearcher:
                     WHERE c.tenant_id = CAST(:tenant_id AS uuid)
                       AND c.is_latest = true
                       AND d.publish_status = 'published'
-                      AND d.index_status = 'ready'
+                      AND d.ingest_status = 'ready'
                       AND d.deleted_at IS NULL
                     ORDER BY c.embedding <=> CAST(:qvec AS vector)
                     LIMIT :fetch_k

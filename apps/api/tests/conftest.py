@@ -19,17 +19,16 @@ from rag_api.db.models import (
     Conversation,
     Document,
     DocumentChunk,
-    DocumentFile,
     DocumentSection,
     FaqSuggestionStats,
-    IndexJob,
+    IngestJob,
     Message,
     Tenant,
     TenantMember,
     User,
 )
 from rag_api.domain.identity.password import hash_password
-from rag_api.indexing.search import FakeKnowledgeSearcher
+from rag_api.ingestion.search import FakeKnowledgeSearcher
 from tests.helpers import issue_session_for_user, set_client_session_cookie, tenant_host_headers
 
 
@@ -174,10 +173,7 @@ def tenants(db: Session) -> dict:
     db.execute(
         delete(DocumentSection).where(DocumentSection.tenant_id.in_(test_tenant_ids))
     )
-    db.execute(delete(IndexJob).where(IndexJob.tenant_id.in_(test_tenant_ids)))
-    db.execute(
-        delete(DocumentFile).where(DocumentFile.tenant_id.in_(test_tenant_ids))
-    )
+    db.execute(delete(IngestJob).where(IngestJob.tenant_id.in_(test_tenant_ids)))
     db.execute(delete(Document).where(Document.tenant_id.in_(test_tenant_ids)))
     db.commit()
 

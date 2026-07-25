@@ -12,13 +12,13 @@ from pptx import Presentation
 
 from rag_api.domain.documents.constants import FILE_TYPE_MISMATCH_MESSAGE
 from rag_api.domain.documents.file_type import FileTypeError, validate_file_type
-from rag_api.indexing.office import (
+from rag_api.ingestion.office import (
     OfficeParseError,
     docx_to_markdown,
     pptx_to_markdown,
     xlsx_to_markdown,
 )
-from rag_api.indexing.parse import ParseError, RoutedDocumentParser
+from rag_api.ingestion.parse import ParseError, RoutedDocumentParser
 
 
 def _ooxml_zip(*names: str, extra: dict[str, bytes] | None = None) -> bytes:
@@ -117,7 +117,7 @@ def test_f08_t13_xlsx_markdown_table_fill_down() -> None:
     """F08-T13: Markdown table + column fill-down for merged-cell empties."""
     from datetime import datetime
 
-    from rag_api.indexing.sections import infer_chunk_type
+    from rag_api.ingestion.sections import infer_chunk_type
 
     wb = Workbook()
     ws = wb.active

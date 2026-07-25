@@ -3,10 +3,9 @@ from rag_api.db.models.agent_run_step import AgentRunStep
 from rag_api.db.models.conversation import Conversation
 from rag_api.db.models.document import Document
 from rag_api.db.models.document_chunk import DocumentChunk
-from rag_api.db.models.document_file import DocumentFile
 from rag_api.db.models.document_section import DocumentSection
 from rag_api.db.models.faq_suggestion_stats import FaqSuggestionStats
-from rag_api.db.models.index_job import IndexJob
+from rag_api.db.models.ingest_job import IngestJob
 from rag_api.db.models.message import Message
 from rag_api.db.models.session import Session
 from rag_api.db.models.tenant import Tenant
@@ -20,10 +19,9 @@ __all__ = [
     "Conversation",
     "Document",
     "DocumentChunk",
-    "DocumentFile",
     "DocumentSection",
     "FaqSuggestionStats",
-    "IndexJob",
+    "IngestJob",
     "Message",
     "Session",
     "Tenant",

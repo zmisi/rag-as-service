@@ -2,7 +2,7 @@ from functools import lru_cache
 from getpass import getuser
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _API_ROOT = Path(__file__).resolve().parents[3]
@@ -72,17 +72,36 @@ class Settings(BaseSettings):
     embedding_dim: int = Field(default=1024, alias="EMBEDDING_DIM")
     chunk_target_tokens: int = Field(default=800, alias="CHUNK_TARGET_TOKENS")
     chunk_overlap_tokens: int = Field(default=100, alias="CHUNK_OVERLAP_TOKENS")
-    # F04: process index_job inline after publish (convenient for local e2e).
-    # Prefer false when a dedicated index worker process is running.
-    index_sync_on_publish: bool = Field(default=False, alias="INDEX_SYNC_ON_PUBLISH")
-    index_worker_poll_interval_seconds: float = Field(
-        default=2.0,
-        alias="INDEX_WORKER_POLL_INTERVAL_SECONDS",
+    # F04: process ingest_job inline after publish (convenient for local e2e).
+    # Prefer false when a dedicated ingest worker process is running.
+    # Temporary: still accept legacy INDEX_* env names.
+    ingest_sync_on_publish: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "INGEST_SYNC_ON_PUBLISH",
+            "INDEX_SYNC_ON_PUBLISH",
+        ),
     )
-    index_worker_batch_size: int = Field(default=5, alias="INDEX_WORKER_BATCH_SIZE")
-    index_job_stuck_after_seconds: int = Field(
+    ingest_worker_poll_interval_seconds: float = Field(
+        default=2.0,
+        validation_alias=AliasChoices(
+            "INGEST_WORKER_POLL_INTERVAL_SECONDS",
+            "INDEX_WORKER_POLL_INTERVAL_SECONDS",
+        ),
+    )
+    ingest_worker_batch_size: int = Field(
+        default=5,
+        validation_alias=AliasChoices(
+            "INGEST_WORKER_BATCH_SIZE",
+            "INDEX_WORKER_BATCH_SIZE",
+        ),
+    )
+    ingest_job_stuck_after_seconds: int = Field(
         default=1800,
-        alias="INDEX_JOB_STUCK_AFTER_SECONDS",
+        validation_alias=AliasChoices(
+            "INGEST_JOB_STUCK_AFTER_SECONDS",
+            "INDEX_JOB_STUCK_AFTER_SECONDS",
+        ),
     )
     # When set (and matches proxy), API trusts X-Forwarded-Host from the proxy.
     # Empty = never trust client/proxy XFH; use Host only (tests set Host directly).

@@ -8,11 +8,11 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from rag_api.db.models import Document, DocumentFile, IndexJob, Tenant, TenantMember, User
-from rag_api.indexing.embedding import HashingEmbedder
-from rag_api.indexing.parse import ScriptedDocumentParser
-from rag_api.indexing.search import PgKnowledgeSearcher
-from rag_api.indexing.worker import process_index_job
+from rag_api.db.models import Document, IngestJob, Tenant, TenantMember, User
+from rag_api.ingestion.embedding import HashingEmbedder
+from rag_api.ingestion.parse import ScriptedDocumentParser
+from rag_api.ingestion.search import PgKnowledgeSearcher
+from rag_api.ingestion.worker import process_ingest_job
 from rag_api.services.storage_service import StorageService
 
 
@@ -45,7 +45,7 @@ def _published_doc_with_file(
     version: int = 1,
     doc_group_id=None,
     is_latest: bool = True,
-) -> tuple[Document, IndexJob]:
+) -> tuple[Document, IngestJob]:
     group_id = doc_group_id or uuid4()
     doc = Document(
         tenant_id=tenant.tenant_id,
@@ -54,11 +54,11 @@ def _published_doc_with_file(
         doc_name="退货",
         doc_tag="faq",
         publish_status="published",
-        index_status="pending",
+        ingest_status="pending",
         version_number=version,
         is_latest=is_latest,
-        source_metadata={},
-        doc_size=len(body),
+        file_metadata={},
+        file_size_bytes=len(body),
     )
     db.add(doc)
     db.flush()
@@ -69,18 +69,12 @@ def _published_doc_with_file(
         filename=filename,
     )
     storage.write_bytes(key, body)
-    db.add(
-        DocumentFile(
-            tenant_id=tenant.tenant_id,
-            doc_id=doc.doc_id,
-            version=version,
-            storage_key=key,
-            filename=filename,
-            content_type="text/plain",
-            size_bytes=len(body),
-        )
-    )
-    job = IndexJob(
+    doc.file_storage_path = key
+    doc.file_name = filename
+    doc.file_content_type = "text/plain"
+    doc.file_size_bytes = len(body)
+    doc.file_type = "txt"
+    job = IngestJob(
         tenant_id=tenant.tenant_id,
         doc_id=doc.doc_id,
         version=version,
@@ -101,7 +95,7 @@ def test_f04_t01_publish_index_sections_and_leaves(db: Session, tmp_path) -> Non
     )
     parser = ScriptedDocumentParser(default=md)
     emb = HashingEmbedder()
-    process_index_job(db, job.id, embedder=emb, storage=storage, parser=parser)
+    process_ingest_job(db, job.id, embedder=emb, storage=storage, parser=parser)
     db.refresh(job)
     assert job.status == "succeeded"
 
@@ -124,6 +118,61 @@ def test_f04_t01_publish_index_sections_and_leaves(db: Session, tmp_path) -> Non
     assert int(chunks or 0) >= 1
 
 
+_MINIMAL_PDF = b"""%PDF-1.1
+1 0 obj<< /Type /Catalog /Pages 2 0 R >>endobj
+2 0 obj<< /Type /Pages /Kids [3 0 R] /Count 1 >>endobj
+3 0 obj<< /Type /Page /Parent 2 0 R /MediaBox [0 0 3 3] >>endobj
+xref
+0 4
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+trailer<< /Size 4 /Root 1 0 R >>
+startxref
+190
+%%EOF"""
+
+
+@pytest.mark.integration
+def test_f04_t01b_ingest_merges_pdf_page_count(db: Session, tmp_path) -> None:
+    tenant, user = _seed_tenant(db)
+    storage = StorageService(root=tmp_path)
+    doc, job = _published_doc_with_file(
+        db,
+        storage,
+        tenant=tenant,
+        user=user,
+        filename="sample.pdf",
+        body=_MINIMAL_PDF,
+    )
+    doc.file_type = "pdf"
+    doc.file_content_type = "application/pdf"
+    doc.file_metadata = {
+        "schema_version": 1,
+        "upload": {
+            "uploaded_at": "2026-07-25T02:00:00Z",
+            "original_filename": "sample.pdf",
+            "declared_content_type": "application/pdf",
+            "size_bytes": len(_MINIMAL_PDF),
+        },
+    }
+    db.commit()
+    process_ingest_job(
+        db,
+        job.id,
+        embedder=HashingEmbedder(),
+        storage=storage,
+        parser=ScriptedDocumentParser(default="# A\n\nbody\n"),
+    )
+    db.refresh(job)
+    db.refresh(doc)
+    assert job.status == "succeeded"
+    meta = doc.file_metadata or {}
+    assert meta.get("upload", {}).get("original_filename") == "sample.pdf"
+    assert int(meta.get("document", {}).get("page_count") or 0) >= 1
+
+
 @pytest.mark.integration
 def test_f04_t02_review_not_indexed(db: Session, tmp_path) -> None:
     tenant, user = _seed_tenant(db)
@@ -131,7 +180,7 @@ def test_f04_t02_review_not_indexed(db: Session, tmp_path) -> None:
     doc, job = _published_doc_with_file(db, storage, tenant=tenant, user=user)
     doc.publish_status = "review"
     db.commit()
-    process_index_job(
+    process_ingest_job(
         db,
         job.id,
         embedder=HashingEmbedder(),
@@ -156,7 +205,7 @@ def test_f04_t03_cross_tenant_search(db: Session, tmp_path) -> None:
 
     ta, ua = _seed_tenant(db)
     doc_a, job_a = _published_doc_with_file(db, storage, tenant=ta, user=ua)
-    process_index_job(
+    process_ingest_job(
         db, job_a.id, embedder=emb, storage=storage, parser=parser
     )
 
@@ -180,7 +229,7 @@ def test_f04_t04_empty_txt(db: Session, tmp_path) -> None:
     doc, job = _published_doc_with_file(
         db, storage, tenant=tenant, user=user, body=b""
     )
-    process_index_job(
+    process_ingest_job(
         db,
         job.id,
         embedder=HashingEmbedder(),
@@ -214,7 +263,7 @@ def test_f04_t05_version_supersede(db: Session, tmp_path) -> None:
         doc_group_id=group_id,
         is_latest=True,
     )
-    process_index_job(
+    process_ingest_job(
         db,
         job1.id,
         embedder=emb,
@@ -222,7 +271,7 @@ def test_f04_t05_version_supersede(db: Session, tmp_path) -> None:
         parser=ScriptedDocumentParser(default="# V1\n\nOLD_VERSION_PHRASE\n"),
     )
     db.refresh(doc_v1)
-    assert doc_v1.index_status == "ready"
+    assert doc_v1.ingest_status == "ready"
     assert doc_v1.is_latest is True
 
     # App maintains single is_latest per group (no DB partial unique).
@@ -239,7 +288,7 @@ def test_f04_t05_version_supersede(db: Session, tmp_path) -> None:
         is_latest=True,
     )
 
-    process_index_job(
+    process_ingest_job(
         db,
         job2.id,
         embedder=emb,
@@ -279,13 +328,13 @@ def test_f04_t05_version_supersede(db: Session, tmp_path) -> None:
 def test_f04_t06_soft_delete(db: Session, tmp_path) -> None:
     from datetime import datetime, timezone
 
-    from rag_api.indexing.worker import deactivate_document_index
+    from rag_api.ingestion.worker import deactivate_document_ingest
 
     tenant, user = _seed_tenant(db)
     storage = StorageService(root=tmp_path)
     emb = HashingEmbedder()
     doc, job = _published_doc_with_file(db, storage, tenant=tenant, user=user)
-    process_index_job(
+    process_ingest_job(
         db,
         job.id,
         embedder=emb,
@@ -293,7 +342,7 @@ def test_f04_t06_soft_delete(db: Session, tmp_path) -> None:
         parser=ScriptedDocumentParser(default="# A\n\nSOFT_DELETE_PHRASE\n"),
     )
     doc.deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
-    deactivate_document_index(db, tenant_id=tenant.tenant_id, document_id=doc.doc_id)
+    deactivate_document_ingest(db, tenant_id=tenant.tenant_id, document_id=doc.doc_id)
     db.commit()
 
     def factory():
@@ -311,7 +360,7 @@ def test_f04_t07_parse_failure(db: Session, tmp_path) -> None:
     storage = StorageService(root=tmp_path)
     doc, job = _published_doc_with_file(db, storage, tenant=tenant, user=user)
     with pytest.raises(Exception):
-        process_index_job(
+        process_ingest_job(
             db,
             job.id,
             embedder=HashingEmbedder(),
@@ -321,7 +370,7 @@ def test_f04_t07_parse_failure(db: Session, tmp_path) -> None:
     db.refresh(job)
     db.refresh(doc)
     assert job.status == "failed"
-    assert doc.index_status == "failed"
+    assert doc.ingest_status == "failed"
     assert doc.error_message
     latest = db.execute(
         text(
@@ -339,7 +388,7 @@ def test_f04_t08_search_returns_section_and_path(db: Session, tmp_path) -> None:
     storage = StorageService(root=tmp_path)
     emb = HashingEmbedder()
     _, job = _published_doc_with_file(db, storage, tenant=tenant, user=user)
-    process_index_job(
+    process_ingest_job(
         db,
         job.id,
         embedder=emb,
@@ -373,7 +422,7 @@ def test_f04_t09_empty_pdf_succeeds(db: Session, tmp_path) -> None:
         filename="scan.pdf",
         body=b"%PDF-empty",
     )
-    process_index_job(
+    process_ingest_job(
         db,
         job.id,
         embedder=HashingEmbedder(),
@@ -408,7 +457,7 @@ PHRASE_ONLY_IN_A 内容甲
 PHRASE_ONLY_IN_B 内容乙
 """
     _, job = _published_doc_with_file(db, storage, tenant=tenant, user=user)
-    process_index_job(
+    process_ingest_job(
         db,
         job.id,
         embedder=emb,

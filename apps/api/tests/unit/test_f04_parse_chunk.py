@@ -4,17 +4,17 @@ from __future__ import annotations
 
 import pytest
 
-from rag_api.indexing.chunker import chunk_text
-from rag_api.indexing.constants import EMBEDDING_DIM
-from rag_api.indexing.embedding import HashingEmbedder
-from rag_api.indexing.parse import (
+from rag_api.ingestion.chunker import chunk_text
+from rag_api.ingestion.constants import EMBEDDING_DIM
+from rag_api.ingestion.embedding import HashingEmbedder
+from rag_api.ingestion.parse import (
     ParseError,
     ScriptedDocumentParser,
     TextDocumentParser,
     parse_files_to_markdown,
 )
-from rag_api.indexing.search import ChunkHit, dedupe_hits_by_section
-from rag_api.indexing.sections import build_section_tree
+from rag_api.ingestion.search import ChunkHit, dedupe_hits_by_section
+from rag_api.ingestion.sections import build_section_tree
 
 
 def test_text_parser_txt_md() -> None:
@@ -111,7 +111,7 @@ def test_under_budget_keeps_mixed_single_leaf() -> None:
 
 
 def test_f04_t19_embedding_text_includes_heading_path() -> None:
-    from rag_api.indexing.worker import build_embedding_text
+    from rag_api.ingestion.worker import build_embedding_text
 
     text = build_embedding_text(
         ["2.1 索引类型与选择", "2.1.1 B-Tree 索引适用场景"],

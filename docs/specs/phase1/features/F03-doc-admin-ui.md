@@ -92,7 +92,7 @@
 
 6. [Editor] 发布成功
    → Stepper 到「已发布」；version 显示 1.0
-   → IndexJobStatusCard：索引中… → 索引成功（或失败见流程 C）
+   → IngestJobStatusCard：索引中… → 索引成功（或失败见流程 C）
    → 主按钮变为「编辑新版本」
 ```
 
@@ -110,7 +110,7 @@
 
 ```text
 1. 发布成功 → status=published，Stepper=已发布
-2. IndexJobStatusCard → failed + error 摘要（如「无法解析 PDF」）
+2. IngestJobStatusCard → failed + error 摘要（如「无法解析 PDF」）
 3. 文档在 Admin 仍显示「已发布」，但 RAG 检索不到内容（F04 行为）
 4. Phase 1 UI 仅展示失败原因，不提供「重试索引」按钮
 ```
@@ -135,7 +135,7 @@
 | ValidationPanel | 隐藏（提交审核失败后才显示） |
 | 操作栏 | **保存草稿**（secondary）、**提交审核**（primary） |
 | Publish | hidden / disabled |
-| IndexJobStatusCard | 隐藏或显示「尚未发布」 |
+| IngestJobStatusCard | 隐藏或显示「尚未发布」 |
 
 #### 待发布（review）
 
@@ -152,7 +152,7 @@
 |------|------|
 | 元数据与文件 | 只读 |
 | DocVersionPanel | 显示当前 version |
-| IndexJobStatusCard | 显示最新索引 job 状态 |
+| IngestJobStatusCard | 显示最新索引 job 状态 |
 | 操作栏 | **编辑新版本** |
 
 ### 按钮文案与优先级
@@ -186,7 +186,7 @@
 | 提交审核缺字段 | `DocValidationPanel`（字段级列表） |
 | 文件类型/大小 | 文件列表行内 + 上传区下方 |
 | API 网络/5xx | Main Panel 顶部 alert |
-| 索引失败 | `IndexJobStatusCard` 内 error 文案 |
+| 索引失败 | `IngestJobStatusCard` 内 error 文案 |
 
 ## 组件树
 
@@ -209,7 +209,7 @@ AdminPage                          apps/web/app/(tenant)/admin/page.tsx
         │   ├── DocValidationPanel （Submit for Review 缺失项提示）
         │   └── DocActionBar       （保存草稿 / 提交审核 / 发布 / 编辑新版本）
         ├── DocVersionPanel        （当前 version；有 API 时可扩展历史）
-        └── IndexJobStatusCard     （pending/running/succeeded/failed，只读）
+        └── IngestJobStatusCard     （pending/running/succeeded/failed，只读）
 ```
 
 ## 左侧文档列表
@@ -253,7 +253,7 @@ UI 必须用 Stepper 显式展示三步，且 **禁止跳步**（对应 F03-T02�
 
 - 仅 `review` 时可点。
 - **Publish confirm 弹窗**：展示 document id、即将发布的 version、tag、文件数量；提示「发布后将触发索引任务（F04）」。
-- 成功：status → `published`；version 首次为 `1.0`（F03-T05）；刷新 `IndexJobStatusCard`。
+- 成功：status → `published`；version 首次为 `1.0`（F03-T05）；刷新 `IngestJobStatusCard`。
 - draft 直接 publish：按钮不可用 + 若强行调用 API 则 4xx（F03-T02）。
 
 ### review 中编辑
@@ -271,7 +271,7 @@ UI 必须用 Stepper 显式展示三步，且 **禁止跳步**（对应 F03-T02�
 |------|------|------|
 | Title | 文本输入 | 提交审核时必填 |
 | Tag | 受控下拉 | 枚举见下表；非法值 4xx（F03-T06） |
-| 源文件 | 文件上传（支持多文件） | 见下表 |
+| 源文件 | 文件上传（单文件；再上传覆盖） | 见下表 |
 
 ### 字段中文说明（Title / Tag）
 
@@ -287,7 +287,7 @@ UI 必须用 Stepper 显式展示三步，且 **禁止跳步**（对应 F03-T02�
 
 - 写业务能看懂的名称，避免「文档1」「新建 PDF」等泛称。
 - 可含主题 + 版本/时间，如「2026 Q3 产品更新说明」「退款政策与操作流程」。
-- 多文件同一主题时，title 描述整包含义，如「新员工 onboarding 资料包」。
+- 同一主题若需多份资料，拆成多条文档版本（每版本单文件）；title 描述该文件主题。
 
 **示例：**
 
@@ -339,7 +339,7 @@ UI 必须用 Stepper 显式展示三步，且 **禁止跳步**（对应 F03-T02�
 
 ## 索引反馈（只读，F04）
 
-位于 Main Panel 底部 `IndexJobStatusCard`，**不做**解析/分块/embedding 细节 UI。
+位于 Main Panel 底部 `IngestJobStatusCard`，**不做**解析/分块/embedding 细节 UI。
 
 | 字段 | 展示 |
 |------|------|
@@ -379,7 +379,7 @@ type DocDetail = DocSummary & {
   files: DocFile[];
 };
 
-type IndexJobStatus = {
+type IngestJobStatus = {
   status: "pending" | "running" | "succeeded" | "failed";
   error?: string | null;
   attempt_count?: number;
@@ -389,7 +389,7 @@ type IndexJobStatus = {
 ```
 
 **列表 API 最少返回**：`id, title, tag, status, version, update_at`  
-**详情 API 最少返回**：上述 + `files[]`  
+**详情 API 最少返回**：上述 + `file_storage_path`/`file_name`/`file_content_type`/`file_size_bytes`/`file_metadata`（未上传时文件字段为空）
 **索引状态 API 最少返回**：`status, error, attempt_count`（及时间戳）
 
 ## UX 指南
@@ -409,7 +409,7 @@ type IndexJobStatus = {
 
 | 阶段 | 目标 | 内容 |
 |------|------|------|
-| **1. 静态骨架** | 结构对齐 Spec | mock 数据驱动 Workspace / Sidebar / Editor / Stepper / IndexJobStatusCard |
+| **1. 静态骨架** | 结构对齐 Spec | mock 数据驱动 Workspace / Sidebar / Editor / Stepper / IngestJobStatusCard |
 | **2. 半动态交互** | 交互对齐状态机 | 按钮 enable/disable、前端文件校验、Submit for Review 提示、Publish confirm、搜索与 Tag 过滤 |
 | **3. 接 API** | 验收 F03 Test Cases | 列表/详情/save/submit-review/publish/index status；替换 mock |
 

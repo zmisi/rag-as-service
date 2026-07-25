@@ -19,7 +19,7 @@ from rag_api.agent.context import assemble_messages
 from rag_api.agent.tools import ToolExecutor, tool_definitions
 from rag_api.clients.llm import LlmClient, LlmResult, LlmTimeoutError, ToolCall
 from rag_api.db.models import Message
-from rag_api.indexing.search import KnowledgeSearcher
+from rag_api.ingestion.search import KnowledgeSearcher
 from rag_api.observability.agent_log import dump_json, log_agent, snip
 
 logger = logging.getLogger(__name__)

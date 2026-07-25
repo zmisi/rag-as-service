@@ -13,15 +13,14 @@ from rag_api.config import get_settings
 from rag_api.db.models import (
     Document,
     DocumentChunk,
-    DocumentFile,
     DocumentSection,
-    IndexJob,
+    IngestJob,
 )
 from rag_api.domain.documents.constants import content_sha256
-from rag_api.indexing.embedding import HashingEmbedder
-from rag_api.indexing.parse import ScriptedDocumentParser
-from rag_api.indexing.search import PgKnowledgeSearcher
-from rag_api.indexing.worker import process_index_job
+from rag_api.ingestion.embedding import HashingEmbedder
+from rag_api.ingestion.parse import ScriptedDocumentParser
+from rag_api.ingestion.search import PgKnowledgeSearcher
+from rag_api.ingestion.worker import process_ingest_job
 from rag_api.services.storage_service import StorageService
 from tests.helpers import tenant_host_headers
 from tests.integration.test_f04_doc_indexing import _published_doc_with_file, _seed_tenant
@@ -37,8 +36,7 @@ TXT_BODY_DUP = TXT_BODY  # identical bytes for content_sha256 skip
 def wipe_docs(db: Session, tenants: dict):
     db.execute(delete(DocumentChunk))
     db.execute(delete(DocumentSection))
-    db.execute(delete(IndexJob))
-    db.execute(delete(DocumentFile))
+    db.execute(delete(IngestJob))
     db.execute(delete(Document))
     db.commit()
 
@@ -47,7 +45,7 @@ def wipe_docs(db: Session, tenants: dict):
 def disable_index_sync(monkeypatch):
     get_settings.cache_clear()
     settings = get_settings()
-    monkeypatch.setattr(settings, "index_sync_on_publish", False)
+    monkeypatch.setattr(settings, "ingest_sync_on_publish", False)
     yield
     get_settings.cache_clear()
 
@@ -56,8 +54,7 @@ _F07_TABLES = (
     "documents",
     "document_sections",
     "document_chunks",
-    "document_files",
-    "index_jobs",
+    "ingest_jobs",
 )
 
 
@@ -148,6 +145,31 @@ def test_f07_t01_schema_text_triggers_version_int(db_engine: Engine) -> None:
         ).scalar()
         assert level_type == "text"
 
+        for col in ("file_storage_path", "file_name", "file_content_type"):
+            present = conn.execute(
+                text(
+                    """
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'rag_service'
+                      AND table_name = 'documents'
+                      AND column_name = :col
+                    """
+                ),
+                {"col": col},
+            ).scalar()
+            assert present, f"missing documents.{col}"
+
+        no_files_table = conn.execute(
+            text(
+                """
+                SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'rag_service'
+                  AND table_name = 'document_files'
+                """
+            )
+        ).scalar()
+        assert no_files_table is None
+
 
 @pytest.mark.integration
 def test_f07_t02_create_document_version_row(client_a, db: Session, tenants: dict):
@@ -159,7 +181,7 @@ def test_f07_t02_create_document_version_row(client_a, db: Session, tenants: dic
     assert body["version"] == 1
     assert body["is_latest"] is True
     assert body["document_group_id"]
-    assert body["index_status"] == "pending"
+    assert body["ingest_status"] == "pending"
 
     doc = db.get(Document, body["id"])
     assert doc is not None
@@ -217,20 +239,20 @@ def test_f07_t03_t09_tenant_isolation_documents_and_hash(
     doc_a, job_a = _published_doc_with_file(
         db, storage, tenant=ta, user=ua, body=b"same-bytes"
     )
-    doc_a.content_sha256 = content_sha256(b"same-bytes")
+    doc_a.file_content_sha256 = content_sha256(b"same-bytes")
     db.commit()
-    process_index_job(db, job_a.id, embedder=emb, storage=storage, parser=parser)
+    process_ingest_job(db, job_a.id, embedder=emb, storage=storage, parser=parser)
 
     doc_b, job_b = _published_doc_with_file(
         db, storage, tenant=tb, user=ub, body=b"same-bytes"
     )
-    doc_b.content_sha256 = content_sha256(b"same-bytes")
+    doc_b.file_content_sha256 = content_sha256(b"same-bytes")
     db.commit()
-    process_index_job(db, job_b.id, embedder=emb, storage=storage, parser=parser)
+    process_ingest_job(db, job_b.id, embedder=emb, storage=storage, parser=parser)
     db.refresh(doc_a)
     db.refresh(doc_b)
-    assert doc_a.index_status == "ready"
-    assert doc_b.index_status == "ready"
+    assert doc_a.ingest_status == "ready"
+    assert doc_b.ingest_status == "ready"
     assert doc_a.doc_id != doc_b.doc_id
 
     def factory():
@@ -249,11 +271,11 @@ def test_f07_t03_t09_tenant_isolation_documents_and_hash(
 def test_f07_t04_publish_sets_index_pending(client_a, db: Session):
     body = _create_upload_publish(client_a, HEADERS_A)
     assert body["publish_status"] == "published"
-    assert body["index_status"] in ("pending", "processing")
+    assert body["ingest_status"] in ("pending", "processing")
     doc = db.get(Document, body["id"])
     assert doc is not None
     assert doc.publish_status == "published"
-    assert doc.index_status in ("pending", "processing")
+    assert doc.ingest_status in ("pending", "processing")
 
 
 @pytest.mark.integration
@@ -262,7 +284,7 @@ def test_f07_t05_index_failure_keeps_published(db: Session, tmp_path):
     storage = StorageService(root=tmp_path)
     doc, job = _published_doc_with_file(db, storage, tenant=tenant, user=user)
     with pytest.raises(Exception):
-        process_index_job(
+        process_ingest_job(
             db,
             job.id,
             embedder=HashingEmbedder(),
@@ -272,7 +294,7 @@ def test_f07_t05_index_failure_keeps_published(db: Session, tmp_path):
     db.refresh(doc)
     db.refresh(job)
     assert doc.publish_status == "published"
-    assert doc.index_status == "failed"
+    assert doc.ingest_status == "failed"
     assert doc.error_message
     assert job.status == "failed"
 
@@ -283,7 +305,7 @@ def test_f07_t06_success_embedding_on_document_not_chunk(db: Session, tmp_path, 
     storage = StorageService(root=tmp_path)
     emb = HashingEmbedder()
     doc, job = _published_doc_with_file(db, storage, tenant=tenant, user=user)
-    process_index_job(
+    process_ingest_job(
         db,
         job.id,
         embedder=emb,
@@ -291,7 +313,7 @@ def test_f07_t06_success_embedding_on_document_not_chunk(db: Session, tmp_path, 
         parser=ScriptedDocumentParser(default="# H\n\n## S\n\nbody leaf\n"),
     )
     db.refresh(doc)
-    assert doc.index_status == "ready"
+    assert doc.ingest_status == "ready"
     assert doc.embedding_model
     assert doc.embedding_dimension
 
@@ -319,9 +341,9 @@ def test_f07_t07_new_version_flips_is_latest_and_search(
     v1 = _create_upload_publish(client_a, HEADERS_A, title="V1")
     doc_v1 = db.get(Document, v1["id"])
     assert doc_v1 is not None
-    job1 = db.scalar(select(IndexJob).where(IndexJob.doc_id == doc_v1.doc_id))
+    job1 = db.scalar(select(IngestJob).where(IngestJob.doc_id == doc_v1.doc_id))
     assert job1 is not None
-    process_index_job(
+    process_ingest_job(
         db,
         job1.id,
         embedder=emb,
@@ -329,7 +351,7 @@ def test_f07_t07_new_version_flips_is_latest_and_search(
         parser=ScriptedDocumentParser(default="# V1\n\nOLD_F07_VERSION_PHRASE\n"),
     )
     db.refresh(doc_v1)
-    assert doc_v1.index_status == "ready"
+    assert doc_v1.ingest_status == "ready"
 
     nv = client_a.post(f"/v1/documents/{doc_v1.doc_id}/new-version", headers=HEADERS_A)
     assert nv.status_code == 200, nv.text
@@ -353,12 +375,12 @@ def test_f07_t07_new_version_flips_is_latest_and_search(
     assert pub2.status_code == 200, pub2.text
 
     job2 = db.scalar(
-        select(IndexJob)
-        .where(IndexJob.doc_id == draft_id)
-        .order_by(IndexJob.create_at.desc())
+        select(IngestJob)
+        .where(IngestJob.doc_id == draft_id)
+        .order_by(IngestJob.create_at.desc())
     )
     assert job2 is not None
-    process_index_job(
+    process_ingest_job(
         db,
         job2.id,
         embedder=emb,
@@ -372,7 +394,7 @@ def test_f07_t07_new_version_flips_is_latest_and_search(
     assert doc_v1 is not None and doc_v2 is not None
     assert doc_v1.is_latest is False
     assert doc_v2.is_latest is True
-    assert doc_v2.index_status == "ready"
+    assert doc_v2.ingest_status == "ready"
 
     sec_v1 = db.scalar(
         select(DocumentSection).where(
@@ -411,68 +433,57 @@ def test_f07_t07_new_version_flips_is_latest_and_search(
 
 
 @pytest.mark.integration
-def test_f07_t08_same_tenant_content_sha256_skip(
+def test_f07_t08_same_tenant_content_sha256_reject(
     client_a, db: Session, tenants: dict
 ):
     first = _create_upload_publish(client_a, HEADERS_A, title="First")
     doc1 = db.get(Document, first["id"])
     assert doc1 is not None
-    job1 = db.scalar(select(IndexJob).where(IndexJob.doc_id == doc1.doc_id))
+    job1 = db.scalar(select(IngestJob).where(IngestJob.doc_id == doc1.doc_id))
     assert job1 is not None
 
     emb = HashingEmbedder()
     parser = ScriptedDocumentParser(default=TXT_BODY.decode("utf-8"))
-    process_index_job(db, job1.id, embedder=emb, storage=StorageService(), parser=parser)
+    process_ingest_job(db, job1.id, embedder=emb, storage=StorageService(), parser=parser)
     db.refresh(doc1)
-    assert doc1.index_status == "ready"
-    assert doc1.content_sha256 == content_sha256(TXT_BODY_DUP)
-    chunks1 = list(
-        db.scalars(
-            select(DocumentChunk).where(
-                DocumentChunk.doc_id == doc1.doc_id,
-                DocumentChunk.is_latest.is_(True),
-            )
-        ).all()
-    )
-    assert chunks1, "source doc must have chunks to clone"
+    assert doc1.ingest_status == "ready"
+    assert doc1.file_content_sha256 == content_sha256(TXT_BODY_DUP)
 
-    second = _create_upload_publish(client_a, HEADERS_A, title="Second")
-    assert second.get("warning_code") == "duplicate_content_sha256"
-    assert second.get("warning")
-    doc2 = db.get(Document, second["id"])
+    created = client_a.post("/v1/documents", headers=HEADERS_A)
+    assert created.status_code == 201, created.text
+    doc2_id = created.json()["id"]
+    up = client_a.post(
+        f"/v1/documents/{doc2_id}/files",
+        headers=HEADERS_A,
+        files={"file": ("note.txt", io.BytesIO(TXT_BODY_DUP), "text/plain")},
+    )
+    assert up.status_code == 201, up.text
+    client_a.patch(
+        f"/v1/documents/{doc2_id}",
+        json={"title": "Second", "tag": "faq"},
+        headers=HEADERS_A,
+    )
+    client_a.post(f"/v1/documents/{doc2_id}/submit-review", headers=HEADERS_A)
+    pub = client_a.post(f"/v1/documents/{doc2_id}/publish", headers=HEADERS_A)
+    assert pub.status_code == 409, pub.text
+    detail = pub.json()["detail"]
+    assert detail["code"] == "duplicate_content_sha256"
+    assert detail["existing_document_id"] == str(doc1.doc_id)
+    assert detail["existing_title"] == "First"
+    assert detail["message"]
+
+    doc2 = db.get(Document, doc2_id)
     assert doc2 is not None
-    assert doc2.content_sha256 == content_sha256(TXT_BODY_DUP)
-    assert doc2.index_status == "ready"
-    job2 = db.scalar(
-        select(IndexJob)
-        .where(IndexJob.doc_id == doc2.doc_id)
-        .order_by(IndexJob.create_at.desc())
-    )
-    assert job2 is not None
-    assert job2.status == "succeeded"
-    assert job2.error and "content_sha256" in job2.error
-    status = client_a.get(
-        f"/v1/documents/{second['id']}/index-status", headers=HEADERS_A
-    )
-    assert status.status_code == 200
-    assert status.json()["warning_code"] == "duplicate_content_sha256"
-    assert status.json()["warning"]
-
+    assert doc2.publish_status == "draft"
+    assert doc2.ingest_status != "ready"
+    job2 = db.scalar(select(IngestJob).where(IngestJob.doc_id == doc2.doc_id))
+    assert job2 is None
     chunks2 = list(
         db.scalars(
-            select(DocumentChunk).where(
-                DocumentChunk.doc_id == doc2.doc_id,
-                DocumentChunk.is_latest.is_(True),
-            )
+            select(DocumentChunk).where(DocumentChunk.doc_id == doc2.doc_id)
         ).all()
     )
-    assert len(chunks2) == len(chunks1)
-    assert {c.chunk_id for c in chunks2}.isdisjoint({c.chunk_id for c in chunks1})
-
-    searcher = PgKnowledgeSearcher(lambda: db, embedder=emb)
-    hits = searcher.search(tenants["tenant_a"].tenant_id, "UNIQUE_F07_PHRASE", top_k=10)
-    hit_doc_ids = {h.document_id for h in hits}
-    assert str(doc2.doc_id) in hit_doc_ids
+    assert chunks2 == []
 
 
 @pytest.mark.integration
@@ -491,7 +502,7 @@ alpha body
 beta body
 """
     doc, job = _published_doc_with_file(db, storage, tenant=tenant, user=user)
-    process_index_job(
+    process_ingest_job(
         db,
         job.id,
         embedder=emb,
@@ -537,7 +548,7 @@ def test_f07_t12_hard_delete_cascades_chunks_sections(db: Session, tmp_path):
     storage = StorageService(root=tmp_path)
     emb = HashingEmbedder()
     doc, job = _published_doc_with_file(db, storage, tenant=tenant, user=user)
-    process_index_job(
+    process_ingest_job(
         db,
         job.id,
         embedder=emb,
@@ -573,7 +584,7 @@ def test_f07_t13_search_tenant_isolation(db: Session, tmp_path):
     parser = ScriptedDocumentParser(default="# A\n\nF07_TENANT_A_ONLY_PHRASE\n")
     ta, ua = _seed_tenant(db)
     _, job_a = _published_doc_with_file(db, storage, tenant=ta, user=ua)
-    process_index_job(db, job_a.id, embedder=emb, storage=storage, parser=parser)
+    process_ingest_job(db, job_a.id, embedder=emb, storage=storage, parser=parser)
     tb, _ub = _seed_tenant(db)
 
     def factory():

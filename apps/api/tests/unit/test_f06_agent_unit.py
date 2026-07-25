@@ -13,7 +13,7 @@ from rag_api.agent.context import compress_history, format_chunks_as_untrusted
 from rag_api.agent.loop import AgentLoop
 from rag_api.agent.tools import ToolExecutor
 from rag_api.clients.llm import LlmResult, ScriptedLlmClient, ToolCall
-from rag_api.indexing.search import ChunkHit, FakeKnowledgeSearcher
+from rag_api.ingestion.search import ChunkHit, FakeKnowledgeSearcher
 
 
 class _Msg:

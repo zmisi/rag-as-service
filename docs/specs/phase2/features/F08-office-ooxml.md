@@ -65,7 +65,7 @@ flowchart TD
 1. 在 Phase 1 白名单（`.txt` / `.md` / `.pdf`）上 **增加** `.docx` / `.xlsx` / `.pptx`。
 2. 拒绝 `.doc` / `.ppt` / `.xls` 及 `.exe` 等；旧版错误信息须提示对应 OOXML 扩展名。
 3. **类型识别（两道门，均须通过）**：
-   1. **扩展名准入**：对文件名做小写规范化；按最长后缀匹配；仅白名单可通过。`Content-Type` 可写入 `document_files.content_type`，**不得**单独作为准入依据。
+   1. **扩展名准入**：对文件名做小写规范化；按最长后缀匹配；仅白名单可通过。`Content-Type` 可写入 `documents.file_content_type`，**不得**单独作为准入依据。
    2. **魔术字节检测**（上传 save 时强制；索引侧可再校验一次作双保险）：
       | 宣称扩展名 | 魔术字节 / 内容约束 |
       |------------|---------------------|
@@ -79,7 +79,7 @@ flowchart TD
 
 5. publish / review / 版本 / 租户隔离规则与其它类型相同。
 6. 索引：published 后入队；Office 三类 `parse_route` 分别为 `docx` / `pptx` / `xlsx`（写结构化日志）；空文档/空表 → job succeeded、0 chunk（与空 txt 一致）。
-7. 损坏、无法打开、或魔数二次校验失败 → job `failed`、`index_status=failed`，无 `is_latest` section/chunk。
+7. 损坏、无法打开、或魔数二次校验失败 → job `failed`、`ingest_status=failed`，无 `is_latest` section/chunk。
 8. `.xlsx`：**不**要求公式计算结果；以 `openpyxl` 读到的单元格**显示值/已缓存值**中的可见文本为准（无缓存公式结果则按实现固定策略跳过或留空，须在测试中可预期）。
 9. Markdown 出口约定（便于节树）：
    - `.docx`：段落与标题映射为 Markdown 标题/正文；表尽量 Markdown 表。
@@ -97,11 +97,11 @@ flowchart TD
 
 ## 数据与边界
 
-> 时间戳列见 constraints §3.2。无新表；扩展 `document_files` 类型校验与 F04 `parse_route` 枚举。
+> 时间戳列见 constraints §3.2。无新表；扩展 `documents` 类型校验与 F04 `parse_route` 枚举。
 
 | 实体 | 关键约束 |
 |------|----------|
-| document_files | 允许 `.docx` / `.xlsx` / `.pptx`；MIME 仅元数据 |
+| documents | 允许 `.docx` / `.xlsx` / `.pptx`；MIME 仅元数据（`file_content_type`） |
 | parse_route | `docx` / `pptx` / `xlsx`（另：既有 `text` / `pymupdf` / `docling` 仅用于非 Office） |
 
 依赖：`python-docx`、`python-pptx`、`openpyxl`（或经 Spec 批准的等价轻量库）；**不**为 Office 引入 Docling/Unstructured。

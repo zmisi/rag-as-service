@@ -13,13 +13,12 @@ from rag_api.db.models.base import RAG_SCHEMA, Base, TimestampMixin
 
 if TYPE_CHECKING:
     from rag_api.db.models.document_chunk import DocumentChunk
-    from rag_api.db.models.document_file import DocumentFile
     from rag_api.db.models.document_section import DocumentSection
-    from rag_api.db.models.index_job import IndexJob
+    from rag_api.db.models.ingest_job import IngestJob
 
 
 class Document(TimestampMixin, Base):
-    """One row = one document version (F07 / F08)."""
+    """One row = one document version (F07 / F08); at most one source file."""
 
     __tablename__ = "documents"
 
@@ -35,39 +34,37 @@ class Document(TimestampMixin, Base):
     doc_name: Mapped[str] = mapped_column(Text, nullable=False, default="")
     doc_tag: Mapped[str] = mapped_column(Text, nullable=False, default="")
     doc_group_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
-    content_sha256: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     publish_status: Mapped[str] = mapped_column(Text, nullable=False, default="draft")
-    index_status: Mapped[str] = mapped_column(Text, nullable=False, default="pending")
+    ingest_status: Mapped[str] = mapped_column(Text, nullable=False, default="pending")
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    source_type: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    source_uri: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    source_metadata: Mapped[dict[str, Any]] = mapped_column(
+    file_name: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    file_type: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    file_size_bytes: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default=text("0"), default=0
+    )
+    file_content_type: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    file_content_sha256: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    file_modified_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
+    file_storage_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    file_metadata: Mapped[dict[str, Any]] = mapped_column(
         JSONB,
         nullable=True,
         default=dict,
     )
-    source_modified_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime, nullable=True
-    )
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    is_latest: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     embedding_provider: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     embedding_model: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     embedding_dimension: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    is_latest: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    version_number: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
-    doc_size: Mapped[int] = mapped_column(
-        BigInteger, nullable=False, server_default=text("0"), default=0
-    )
     created_by: Mapped[UUID] = mapped_column(
         ForeignKey(f"{RAG_SCHEMA}.users.user_id", ondelete="RESTRICT"),
         nullable=False,
     )
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
-    files: Mapped[list[DocumentFile]] = relationship(
-        back_populates="document",
-        cascade="all, delete-orphan",
-    )
-    index_jobs: Mapped[list[IndexJob]] = relationship(
+    ingest_jobs: Mapped[list[IngestJob]] = relationship(
         back_populates="document",
         cascade="all, delete-orphan",
     )

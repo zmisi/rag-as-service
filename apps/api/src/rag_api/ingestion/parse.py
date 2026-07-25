@@ -15,13 +15,13 @@ from pathlib import Path
 from typing import Protocol
 
 from rag_api.config import get_settings
-from rag_api.indexing.parse_blocks import (
+from rag_api.ingestion.parse_blocks import (
     ParseBlock,
     blocks_to_markdown,
     count_block_kinds,
     markdown_to_blocks,
 )
-from rag_api.indexing.pdf_skeleton import SkeletonProbe, detect_pdf_skeleton
+from rag_api.ingestion.pdf_skeleton import SkeletonProbe, detect_pdf_skeleton
 
 logger = logging.getLogger(__name__)
 
@@ -295,7 +295,7 @@ class RoutedDocumentParser:
 
     def _parse_office(self, filename: str, data: bytes) -> ParseOutcome:
         from rag_api.domain.documents.file_type import FileTypeError, validate_file_type
-        from rag_api.indexing.office import OfficeParseError, office_to_markdown
+        from rag_api.ingestion.office import OfficeParseError, office_to_markdown
 
         try:
             validate_file_type(filename, data)

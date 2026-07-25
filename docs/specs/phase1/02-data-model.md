@@ -58,9 +58,8 @@ erDiagram
   users ||--o{ sessions : owns
   users ||--o{ documents : creates
   tenants ||--o{ documents : owns
-  documents ||--o{ document_files : has
-  documents ||--o{ index_jobs : indexes
-  tenants ||--o{ index_jobs : scopes
+  documents ||--o{ ingest_jobs : indexes
+  tenants ||--o{ ingest_jobs : scopes
   documents ||--o{ document_sections : sectioned
   tenants ||--o{ document_sections : scopes
   document_sections ||--o{ document_chunks : leaves
@@ -108,17 +107,13 @@ erDiagram
     int version_number
     bool is_latest
     text publish_status
-    text index_status
-    bigint doc_size
+    text ingest_status
+    text file_storage_path
+    text file_name
+    text file_content_type
+    bigint file_size_bytes
   }
-  document_files {
-    uuid id PK
-    uuid doc_id FK
-    uuid tenant_id FK
-    int version
-    text storage_key
-  }
-  index_jobs {
+  ingest_jobs {
     uuid id PK
     uuid tenant_id FK
     uuid doc_id FK
@@ -178,9 +173,8 @@ erDiagram
 | | `tenants` | F01 + F08 | 租户（`tenant_name` 兼 Host） |
 | | `tenant_members` | F01 + F08 | 用户–租户成员（**必含 `user_id`**） |
 | | `sessions` | F02 | 服务端会话（可吊销） |
-| 知识库 | `documents` | F03 + F04 + F07 + F08 | 文档**版本行**（`doc_id`=版本 PK；`doc_group_id` 逻辑组；双状态；`version_number`） |
-| | `document_files` | F03 | 源文件对象（FK → 版本行 `doc_id`） |
-| 索引 | `index_jobs` | F04 | 索引任务队列（FK → 版本行 `doc_id`） |
+| 知识库 | `documents` | F03 + F04 + F07 + F08 | 文档**版本行**（`doc_id`=版本 PK；双状态；每版本**至多一个**源文件：`file_storage_path`/`file_name`/`file_content_type`/`file_size_bytes`） |
+| 索引 | `ingest_jobs` | F04 | 摄入任务队列（FK → 版本行 `doc_id`） |
 | | `document_sections` | F04 | H1–H6 节（全文 + path；供检索返回） |
 | | `document_chunks` | F04 + F08 | 节内 leaf + embedding（`chunk_id` / `doc_id`） |
 | 数据模型 | （上表） | F07 / F08 | F07 版本行语义；F08 显式列命名与身份字段 |
@@ -272,7 +266,7 @@ erDiagram
 
 ### 4.5 `documents` — 知识库文档（版本行）
 
-**表注释**：每个**文档版本**一行；`doc_id` 为版本主键；同逻辑文档共享 `doc_group_id`。发布态（F03）与索引态（F04）分列；仅 `publish_status=published` 且 `index_status=ready` 且 `deleted_at IS NULL` 且 `is_latest=true` 的版本可被 RAG 检索。字符串列一律 **`text`**（禁止 `varchar`）。列命名见 F08。
+**表注释**：每个**文档版本**一行；`doc_id` 为版本主键；同逻辑文档共享 `doc_group_id`。发布态（F03）与索引态（F04）分列；仅 `publish_status=published` 且 `ingest_status=ready` 且 `deleted_at IS NULL` 且 `is_latest=true` 的版本可被 RAG 检索。字符串列一律 **`text`**（禁止 `varchar`）。列命名见 F08。
 
 | 字段 | 类型 | 约束 | 注释 |
 |------|------|------|------|
@@ -281,63 +275,55 @@ erDiagram
 | `doc_name` | `text` | NOT NULL DEFAULT '' | 标题（原 `title`）；submit-for-review 时必填非空 |
 | `doc_tag` | `text` | NOT NULL DEFAULT '' | 分类：`news`/`sop`/`best_practice`/`knowledge_base`/`faq`（原 `tag`） |
 | `doc_group_id` | `uuid` | NOT NULL | 逻辑文档组 ID；首次创建时生成；同组共享 |
-| `content_sha256` | `text` | NULL | 本版本源内容哈希；同租户同 hash 且已 `ready` 可跳过冗余 parse/embedding，并克隆索引行到本 `doc_id` |
 | `publish_status` | `text` | NOT NULL | F03 发布态：`draft`→`review`→`published`（**不**改名为笼统 `status`；API 可短期别名） |
-| `index_status` | `text` | NOT NULL | F04 索引态：`pending`/`processing`/`ready`/`failed` |
+| `ingest_status` | `text` | NOT NULL | F04 索引态：`pending`/`processing`/`ready`/`failed` |
 | `error_message` | `text` | NULL | 仅索引失败原因；成功为 NULL |
-| `source_type` | `text` | NULL | 源类型（如扩展名 / `upload`） |
-| `source_uri` | `text` | NULL | 源 URI / 存储定位 |
-| `source_metadata` | `jsonb` | NULL | 扩展元数据（原 `metadata_`） |
-| `source_modified_at` | `timestamp` | NULL | 可选源修改时间 |
+| `file_name` | `text` | NULL | 原始文件名（未上传为空） |
+| `file_type` | `text` | NULL | 源类型（如扩展名 `pdf` / `docx`） |
+| `file_size_bytes` | `bigint` | NOT NULL DEFAULT 0 | 本版本源文件字节数（单文件；无文件为 `0`）；单文件 ≤20MB |
+| `file_content_type` | `text` | NULL | MIME 类型（未上传为空） |
+| `file_content_sha256` | `text` | NULL | 本版本源内容哈希；同租户另一 `doc_group` 已有相同 hash 且 `published`+`ready` 时 publish **409**（知识库防重复）；**不**克隆索引 |
+| `file_modified_at` | `timestamp` | NULL | 可选源文件修改时间 |
+| `file_storage_path` | `text` | NULL | 对象存储键（未上传为空）；格式 `{tenant_id}/{doc_id}/{version}/{file_name}` |
+| `file_metadata` | `jsonb` | NULL | 可扩展对象元数据（`schema_version=1`）：`upload`（上传溯源）+ `document`（解析抽取的文档属性）；一等列仍为权威，本字段不替代之 |
+| `version_number` | `int` | NOT NULL | 组内版本号，从 **1** 递增；Admin 展示为 `v{N}` |
+| `is_latest` | `boolean` | NOT NULL DEFAULT true | 组内是否当前最新版本行；同组至多一行 `true`（**应用层**维护，无 partial unique） |
 | `embedding_provider` | `text` | NULL | 本版本 embedding 提供方（审计；仅 documents） |
 | `embedding_model` | `text` | NULL | 本版本 embedding 模型名（审计；**chunks 不存此列**） |
 | `embedding_dimension` | `int` | NULL | 本版本 embedding 维度 |
-| `is_latest` | `boolean` | NOT NULL DEFAULT true | 组内是否当前最新版本行；同组至多一行 `true`（**应用层**维护，无 partial unique） |
-| `version_number` | `int` | NOT NULL | 组内版本号，从 **1** 递增（原 `version`）；Admin 展示为 `v{N}` |
-| `doc_size` | `bigint` | NOT NULL DEFAULT 0 | 本版本源文件合计字节（`document_files.size_bytes` 之和） |
 | `created_by` | `uuid` | NOT NULL FK → `users.user_id` | 创建人 |
-| `deleted_at` | `timestamp` | NULL | 软删除；**不**用 `publish_status=delete` |
 | `create_at` | `timestamp` | NOT NULL DEFAULT now() | 创建时间 |
 | `update_at` | `timestamp` | NOT NULL DEFAULT now() | 最后修改时间 |
+| `deleted_at` | `timestamp` | NULL | 软删除；**不**用 `publish_status=delete` |
 
 **约束**：
 
 - `CHECK (publish_status IN ('draft','review','published'))`
-- `CHECK (index_status IN ('pending','processing','ready','failed'))`
+- `CHECK (ingest_status IN ('pending','processing','ready','failed'))`
 - `CHECK (doc_tag IN (...) OR doc_tag = '')`（draft 允许空至 save）
 - `uk_documents_tenant_group_version`：`UNIQUE (tenant_id, doc_group_id, version_number)`
 - **禁止**仅 `UNIQUE(doc_group_id)`（会破坏多版本）；**不**建 `uk_documents_tenant_group_latest`
 
 **索引**：Phase 1 仅保留 PK / UK（见上）；**不**建 `ix_documents_*` 二级索引（列表/去重依赖 UK 左前缀或表扫，规模后再补）。
 
-**禁止**：无 `tenant_id` 的全局 `UNIQUE(content_sha256)`。
+**禁止**：无 `tenant_id` 的全局 `UNIQUE(file_content_sha256)`。
+
+**源文件**：每版本**至多一个**源文件，元数据在本表（`file_storage_path`/`file_name`/`file_content_type`/`file_size_bytes` 等）；再上传则覆盖。无独立 `document_files` 表。Phase 1 类型限 `.txt`/`.md`/`.pdf`；Office OOXML 见 Phase 2 F08。
+
+**`file_metadata` 契约（`schema_version: 1`）**：
+
+- 上传时写入 `upload`：`uploaded_at`（ISO8601 UTC）、`original_filename`、`declared_content_type`、`size_bytes`；并置 `file_modified_at` 为上传时刻。
+- 摄入解析时 **merge** `document`（失败不阻断 job）：可选 `title`/`author`/`creator`/`subject`/`created_at`/`modified_at`，以及 `page_count`（PDF）/`slide_count`（pptx）/`sheet_count`（xlsx）；空值省略。
+- `file_modified_at`：优先 `document.modified_at`，否则保留上传时刻。
+- 一等列不双写进 JSON，避免两套真相。
+
+**列顺序（物理）**：`doc_id`, `tenant_id`, `doc_name`, `doc_tag`, `doc_group_id`, `publish_status`, `ingest_status`, `error_message`, `file_name`, `file_type`, `file_size_bytes`, `file_content_type`, `file_content_sha256`, `file_modified_at`, `file_storage_path`, `file_metadata`, `version_number`, `is_latest`, `embedding_provider`, `embedding_model`, `embedding_dimension`, `created_by`, `create_at`, `update_at`, `deleted_at`。
 
 ---
 
-### 4.6 `document_files` — 文档源文件
+### 4.6 `ingest_jobs` — 摄入任务
 
-**表注释**：文档版本关联的存储对象；`doc_id` FK → **版本行** `documents.doc_id`；单文件 ≤20MB；Phase 1 类型限 `.txt`/`.md`/`.pdf`（不含旧版 `.doc`/`.ppt`）；Office OOXML（`.docx`/`.xlsx`/`.pptx`）见 Phase 2 F08。
-
-| 字段 | 类型 | 约束 | 注释 |
-|------|------|------|------|
-| `id` | `uuid` | PK | 文件记录主键 |
-| `tenant_id` | `uuid` | NOT NULL FK → `tenants.tenant_id` | 所属租户（冗余隔离） |
-| `doc_id` | `uuid` | NOT NULL FK → `documents.doc_id` | 所属**版本行**（原 `document_id`） |
-| `version` | `int` | NOT NULL | 冗余版本号，与所属 `documents.version_number` 一致 |
-| `storage_key` | `text` | NOT NULL | 对象存储键：`{tenant_id}/{doc_id}/{version}/{filename}` |
-| `filename` | `text` | NOT NULL | 原始文件名 |
-| `content_type` | `text` | NOT NULL | MIME 类型 |
-| `size_bytes` | `bigint` | NOT NULL | 字节大小；CHECK ≤ 20*1024*1024 |
-| `create_at` | `timestamp` | NOT NULL DEFAULT now() | 上传时间 |
-| `update_at` | `timestamp` | NOT NULL DEFAULT now() | 最后修改时间 |
-
-**索引**：`(tenant_id, doc_id)`；`(doc_id, version)`。
-
----
-
-### 4.7 `index_jobs` — 索引任务
-
-**表注释**：文档版本 publish 后的异步索引队列；`doc_id` FK → **版本行**；由 api worker 以 `FOR UPDATE SKIP LOCKED` 抢占；Phase 1 无独立消息中间件。Worker 同步推进该版本 `documents.index_status`：`pending`→`processing`→`ready`/`failed`。
+**表注释**：文档版本 publish 后的异步索引队列；`doc_id` FK → **版本行**；由 api worker 以 `FOR UPDATE SKIP LOCKED` 抢占；Phase 1 无独立消息中间件。Worker 同步推进该版本 `documents.ingest_status`：`pending`→`processing`→`ready`/`failed`。
 
 | 字段 | 类型 | 约束 | 注释 |
 |------|------|------|------|
@@ -408,7 +394,7 @@ erDiagram
 **约束**：`uk_document_chunks_doc_id_chunk_index`：`UNIQUE (doc_id, chunk_index)`。  
 **索引**：Phase 1 仅保留上述 UK（及 PK）；**不**保留 `document_chunks_*` 命名的二级索引；向量索引策略同 F04（规模后再补）。
 
-**检索门禁**（F04 `search`）：`tenant_id` + leaf/section `is_latest=true` + 文档 `publish_status=published` AND `index_status=ready` AND `deleted_at IS NULL`；命中后 join `document_sections` 取 `path` + 节 `content`；同一 `section_id` 去重保留最高分。
+**检索门禁**（F04 `search`）：`tenant_id` + leaf/section `is_latest=true` + 文档 `publish_status=published` AND `ingest_status=ready` AND `deleted_at IS NULL`；命中后 join `document_sections` 取 `path` + 节 `content`；同一 `section_id` 去重保留最高分。
 
 ---
 
@@ -503,8 +489,7 @@ erDiagram
 | `tenant_members` | `tr_tenant_members_lmt` |
 | `sessions` | `tr_sessions_lmt` |
 | `documents` | `tr_documents_lmt` |
-| `document_files` | `tr_document_files_lmt` |
-| `index_jobs` | `tr_index_jobs_lmt` |
+| `ingest_jobs` | `tr_ingest_jobs_lmt` |
 | `document_sections` | `tr_document_sections_lmt` |
 | `document_chunks` | `tr_document_chunks_lmt` |
 | `conversations` | `tr_conversations_lmt` |
@@ -519,7 +504,7 @@ erDiagram
 | `tenant_members` → tenants/users | `CASCADE` / `CASCADE` |
 | `sessions` → users | `CASCADE` |
 | 租户下属业务表 → tenants | `CASCADE`（删租户清数据；Phase 1 慎用硬删） |
-| `document_files` / `index_jobs` / `document_sections` / `document_chunks` → documents | `CASCADE` |
+| `ingest_jobs` / `document_sections` / `document_chunks` → documents | `CASCADE` |
 | `document_chunks` → `document_sections` | `CASCADE` |
 | `document_sections.parent_id` → `document_sections` | `CASCADE` |
 | `messages` / `agent_runs` → conversations | `CASCADE` |
@@ -534,7 +519,7 @@ erDiagram
 ## 6. 租户隔离检查清单（实现）
 
 1. 除 `users`、`sessions` 外，读写必带 `tenant_id`（`sessions` 经 user→member 校验 Host 租户）。  
-2. `document_chunks` 向量检索与 `document_sections` 读取：**SQL 层** `WHERE tenant_id = :current` 且 `is_latest = true`，并 join 文档门禁（`publish_status=published` AND `index_status=ready` AND `deleted_at IS NULL`）；禁止先搜后滤。  
+2. `document_chunks` 向量检索与 `document_sections` 读取：**SQL 层** `WHERE tenant_id = :current` 且 `is_latest = true`，并 join 文档门禁（`publish_status=published` AND `ingest_status=ready` AND `deleted_at IS NULL`）；禁止先搜后滤。  
 3. 所有租户表建议复合索引前缀含 `tenant_id`。  
 4. Repository 基类强制注入 `tenant_id`（见架构分层）。
 5. 字符串列对本 Feature 涉及表一律 `text`（禁止 `varchar`）；见 F07。
@@ -547,8 +532,8 @@ erDiagram
 |------|--------|
 | F01 | `users`, `tenants`, `tenant_members` |
 | F02 | `sessions` + members 校验 |
-| F03 | `documents`（`publish_status` / 版本组列表）, `document_files` |
-| F04 | `index_jobs`, `document_sections`, `document_chunks`；`documents.index_status` |
+| F03 | `documents`（`publish_status` / 源文件列 / 版本组列表） |
+| F04 | `ingest_jobs`, `document_sections`, `document_chunks`；`documents.ingest_status` |
 | F05 | `conversations`, `messages` |
 | F06 | `agent_runs`, `agent_run_steps`, `messages.meta` |
 | F07 | `documents` 版本行与双状态；sections/chunks `is_latest` 与富字段（数据模型重构） |
@@ -562,8 +547,13 @@ erDiagram
 |------|------|
 | 2026-07-20 | 初稿：Phase 1 共享 schema 全量表设计 |
 | 2026-07-20 | `create_at`/`update_at`（timestamp）；schema=`rag_service`；trigger `tr_{表名}_lmt` |
-| 2026-07-22 | F07：`documents` 改为版本行（`document_group_id`/`version` int/`is_latest`）；双状态 `publish_status`+`index_status`；sections/chunks 用 `is_latest`、`section_index`/`chunk_index`；富 chunk 字段；字符串一律 `text` |
+| 2026-07-22 | F07：`documents` 改为版本行（`document_group_id`/`version` int/`is_latest`）；双状态 `publish_status`+`ingest_status`；sections/chunks 用 `is_latest`、`section_index`/`chunk_index`；富 chunk 字段；字符串一律 `text` |
 | 2026-07-23 | F08：五表显式列命名；`tenant_name`；`user_name`/`active`；成员保留 `user_id`；`doc_*`/`version_number`/`source_metadata`/`doc_size`；chunks `chunk_id`/`doc_id` |
 | 2026-07-23 | 清理冗余索引：去掉 `documents` 的 `ix_*`、`document_chunks_*` 二级索引、`agent_run_steps_run_index_idx` |
 | 2026-07-23 | 去掉 `uk_documents_tenant_group_latest` 与 `documents.source_key`；审计列（`created_by`/`deleted_at`/`create_at`/`update_at`）统一置表末 |
-| 2026-07-24 | 合并 Phase 2 说明：`document_files` 类型边界（Phase 1 文本/PDF；OOXML→Phase 2 F08）；`index_jobs` worker `SKIP LOCKED` 表述；列名保持 Phase 1 F08（`doc_id`） |
+| 2026-07-24 | 合并 Phase 2 说明：`document_files` 类型边界（Phase 1 文本/PDF；OOXML→Phase 2 F08）；`ingest_jobs` worker `SKIP LOCKED` 表述；列名保持 Phase 1 F08（`doc_id`） |
+| 2026-07-25 | 去掉 `document_files`：源文件并入 `documents`（`storage_key`/`filename`/`content_type`/`doc_size`）；每版本单文件，再上传覆盖 |
+| 2026-07-25 | 源文件列统一 `file_*` 前缀（`file_storage_path`/`file_name`/…/`file_content_sha256`）；调整 `documents` 物理列顺序 |
+| 2026-07-25 | `file_metadata`：`schema_version=1`（`upload` + `document`）；上传/摄入填充；同步 `file_modified_at` |
+| 2026-07-25 | 同租户内容防重复：另一 `doc_group` 相同 `file_content_sha256` 且已 `published`+`ready` → publish **409**（不再克隆索引） |
+

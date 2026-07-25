@@ -12,10 +12,10 @@ from rag_api.api.schemas.documents import (
     DocumentDetailOut,
     DocumentSaveRequest,
     DocumentSummaryOut,
-    IndexJobOut,
+    IngestJobOut,
     document_to_detail,
     document_to_summary,
-    index_job_to_out,
+    ingest_job_to_out,
 )
 from rag_api.db.session import get_db
 from rag_api.services import document_service as doc_svc
@@ -49,16 +49,16 @@ def list_documents(
     return [document_to_summary(d) for d in items]
 
 
-@router.post("/index/run-pending", response_model=list[IndexJobOut])
-def run_pending_index_jobs(
+@router.post("/ingest/run-pending", response_model=list[IngestJobOut])
+def run_pending_ingest_jobs(
     db: Session = Depends(get_db),
     auth: AuthContext = Depends(require_tenant_member),
-) -> list[IndexJobOut]:
-    """Drain pending index_jobs for this tenant only (dev/ops helper)."""
-    from rag_api.indexing.worker import process_pending_jobs
+) -> list[IngestJobOut]:
+    """Drain pending ingest_jobs for this tenant only (dev/ops helper)."""
+    from rag_api.ingestion.worker import process_pending_ingest_jobs
 
-    jobs = process_pending_jobs(db, limit=50, tenant_id=auth.tenant_id)
-    return [index_job_to_out(j) for j in jobs]
+    jobs = process_pending_ingest_jobs(db, limit=50, tenant_id=auth.tenant_id)
+    return [ingest_job_to_out(j) for j in jobs]
 
 
 @router.get("/{document_id}", response_model=DocumentDetailOut)
@@ -159,18 +159,18 @@ def new_version(
     return document_to_detail(doc)
 
 
-@router.get("/{document_id}/index-status", response_model=IndexJobOut | None)
-def index_status(
+@router.get("/{document_id}/ingest-status", response_model=IngestJobOut | None)
+def ingest_status(
     document_id: UUID,
     db: Session = Depends(get_db),
     auth: AuthContext = Depends(require_tenant_member),
-) -> IndexJobOut | None:
-    job = doc_svc.latest_index_job(
+) -> IngestJobOut | None:
+    job = doc_svc.latest_ingest_job(
         db, document_id=document_id, tenant_id=auth.tenant_id
     )
     if job is None:
         return None
-    return index_job_to_out(job)
+    return ingest_job_to_out(job)
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)

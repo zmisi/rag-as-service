@@ -69,9 +69,9 @@ def main() -> None:
 
         r = client.post(f"/v1/documents/{doc_id}/publish")
         r.raise_for_status()
-        print("published (index sync if INDEX_SYNC_ON_PUBLISH=true)")
+        print("published (index sync if INGEST_SYNC_ON_PUBLISH=true)")
 
-        r = client.get(f"/v1/documents/{doc_id}/index-status")
+        r = client.get(f"/v1/documents/{doc_id}/ingest-status")
         r.raise_for_status()
         print("index-status", r.json())
 

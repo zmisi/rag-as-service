@@ -51,8 +51,8 @@ Caddy（可选）或 Next BFF
 
 | 进程 | 职责 |
 |------|------|
-| `api`（uvicorn） | HTTP；publish 入队 `index_job`；提供 F04 内部 `search`（供 F06） |
-| `index-worker`（`rag-index-worker`） | `FOR UPDATE SKIP LOCKED` 消费 `index_job`；stuck reclaim |
+| `api`（uvicorn） | HTTP；publish 入队 `ingest_job`；提供 F04 内部 `search`（供 F06） |
+| `ingest-worker`（`rag-ingest-worker`） | `FOR UPDATE SKIP LOCKED` 消费 `ingest_job`；stuck reclaim |
 | `web`（next） | UI；经 `/backend` BFF 调 API |
 
 对象存储：本地 `apps/api/var/storage/`（gitignore），路径由配置注入。
@@ -70,7 +70,7 @@ apps/api/
 │   └── rules/               # 「只依据检索结果作答」等规则片段
 ├── src/rag_api/
 │   ├── main.py              # ASGI 入口
-│   ├── indexing/worker_main.py  # rag-index-worker 入口
+│   ├── ingestion/worker_main.py  # rag-ingest-worker 入口
 │   ├── config/              # settings（Pydantic Settings）
 │   ├── core/                # security、context、exceptions、handlers
 │   ├── domain/              # 无 IO 规则（tenancy、identity 等）

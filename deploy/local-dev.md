@@ -45,9 +45,9 @@ docker compose -f deploy/docker-compose.yml build \
   --build-arg INSTALL_DOCLING=1 \
   --build-arg PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
   --build-arg PIP_TRUSTED_HOST=pypi.tuna.tsinghua.edu.cn \
-  api 
+  api ingest-worker 
 
-docker compose -f deploy/docker-compose.yml up -d --force-recreate api web index-worker 
+docker compose -f deploy/docker-compose.yml up -d --force-recreate api web ingest-worker 
 
 # 查看详细日志
 # 只看 API（索引 / parse_route / 报错最常用）
@@ -106,10 +106,10 @@ docker compose -f deploy/docker-compose.yml up -d --force-recreate api
 docker compose -f deploy/docker-compose.yml up -d web
 
 # 一次重建 api + 启动 web
-docker compose -f deploy/docker-compose.yml up -d --force-recreate api web index-worker
+docker compose -f deploy/docker-compose.yml up -d --force-recreate api web ingest-worker
 
-# 手动调用 run-pending（仅当前租户；生产由 index-worker 消费）
-curl -X POST 'http://127.0.0.1:8000/v1/documents/index/run-pending' \
+# 手动调用 run-pending（仅当前租户；生产由 ingest-worker 消费）
+curl -X POST 'http://127.0.0.1:8000/v1/documents/ingest/run-pending' \
   -H 'Host: opc15.lxzxai.com' \
   -H 'Content-Type: application/json' \
   -b 'pb_session=eBFP3lHKDLheVtMOyPglWJUL36vNXJQhPXy17ktgkNw'
@@ -142,7 +142,7 @@ uvicorn rag_api.main:app --reload --port 8000
 
 # 终端 2 — Index worker
 cd apps/api && source .venv/bin/activate
-rag-index-worker
+rag-ingest-worker
 
 # 终端 3 — Web
 cd apps/web && \
@@ -182,15 +182,16 @@ docker compose -f deploy/docker-compose.yml build \
 
 - `.pdf`：**PyMuPDF fast path**（默认依赖，轻量）→ 质量门限不达标时再 **Docling fallback**
 - `.docx` / `.xlsx` / `.pptx`：轻量库（`python-docx` / `openpyxl` / `python-pptx`），**不用 Docling**
-- 首次走 Docling（结构化 PDF）时会从 Hugging Face 拉模型，发布接口可能较慢；模型缓存后会明显加快
-- `INDEX_SYNC_ON_PUBLISH=true` 时发布会同步跑完索引（本地捷径）；Compose 默认 `false`，由 `index-worker`（`rag-index-worker`）轮询消费 `index_job`（`FOR UPDATE SKIP LOCKED` + stuck reclaim）
+- 首次走 Docling（结构化 PDF）时会从 Hugging Face 拉模型，发布/摄入可能较慢；模型缓存后会明显加快
+- 若报 `cannot find the appropriate snapshot folder` / SSL EOF：是 **HF 模型下载失败**（非 PDF 损坏）。先确认容器能访问 `https://huggingface.co`；直连差再试 `HF_ENDPOINT=https://hf-mirror.com`。若变成 `Connection refused` 且 `dig hf-mirror.com` → `0.0.0.0`：本机把镜像域名黑洞了，**删掉** `HF_ENDPOINT` 后 recreate，走官方 Hub。Compose 卷 `hf_cache` 持久化模型
+- `INGEST_SYNC_ON_PUBLISH=true` 时发布会同步跑完索引（本地捷径）；Compose 默认 `false`，由 `ingest-worker`（`rag-ingest-worker`）轮询消费 `ingest_job`（`FOR UPDATE SKIP LOCKED` + stuck reclaim）
 - 浏览器**不要**自带 `X-Forwarded-Host`；由 Next `/backend` BFF 或 Caddy 注入，并带 `X-Rag-Proxy-Secret`
 
 E2E：`E2E_ENABLED=1` + `DATABASE_URL` 后 `cd apps/web && npm run test:e2e`。
 
 ## F04 / F07 / F08 文档索引与数据模型（本地）
 
-发布 `published` 文档后会写入 `index_job`；Compose 默认由 **`index-worker`** 异步消费（`INDEX_SYNC_ON_PUBLISH=false`）。文档行是**版本行**（`document_group_id` + int `version`）；检索门禁为 `publish_status=published` 且 `index_status=ready` 且 section/chunk `is_latest=true`。
+发布 `published` 文档后会写入 `ingest_job`；Compose 默认由 **`ingest-worker`** 异步消费（`INGEST_SYNC_ON_PUBLISH=false`）。文档行是**版本行**（`document_group_id` + int `version`）；检索门禁为 `publish_status=published` 且 `ingest_status=ready` 且 section/chunk `is_latest=true`。
 
 | 能力 | 说明 |
 |------|------|
@@ -201,7 +202,7 @@ E2E：`E2E_ENABLED=1` + `DATABASE_URL` 后 `cd apps/web && npm run test:e2e`。
 | Embedding | 默认 `HashingEmbedder`（本地无 DashScope）；生产可设 `QWEN_EMBEDDING_ENABLED=true`；审计字段写在 **documents** |
 | PDF 路由 | **有骨架**（书签 TOC / 字号标题候选，或 `PDF_FORCE_STRUCTURE=true`）→ Docling 结构路径；**无骨架纯文字** → PyMuPDF；结构 PDF 需 `INSTALL_DOCLING=1` |
 | 源文件持久化 | Compose 卷 `api_storage` → `/app/var/storage` |
-| 同租户去重 | 相同 `content_sha256` 且已有 `ready` latest → 跳过 parse/embedding，**克隆** section/chunk 到本 `doc_id`（可检索） |
+| 同租户防重复 | 另一 `doc_group` 已有相同 `file_content_sha256` 且 `published`+`ready` → publish **409**（含已有文档 id/title）；不克隆索引 |
 
 **迁移 / 重建索引：**
 
@@ -210,7 +211,7 @@ E2E：`E2E_ENABLED=1` + `DATABASE_URL` 后 `cd apps/web && npm run test:e2e`。
 3. 原生进程：`cd apps/api && uv run alembic upgrade head`。
 4. **F08 为破坏性重命名**（`tenant_id`/`user_id`/`doc_id`/`chunk_id`，`subdomain`→`tenant_name`，`version`→`version_number` 等）。迁移失败时可重建 Postgres 卷后再 `upgrade head`。
 5. F07 升级时会清空旧 `document_sections` / `document_chunks`（需 **reindex**）。
-6. 对已 `published` 文档：重新走发布流，或确保有 pending `index_job` 后调用 `POST /v1/documents/index/run-pending`。
+6. 对已 `published` 文档：重新走发布流，或确保有 pending `ingest_job` 后调用 `POST /v1/documents/ingest/run-pending`。
 7. **节树改为 H1–H6 后**：已 `ready` 的文档仍是旧 H1/H2 切分；须重新 publish / 跑 index job 才会按 H1–H6 重建。
 
 **集成测试：**

@@ -1,6 +1,6 @@
 # F03 文档管理
 
-> `{subdomain}.lxzxai.com/admin`：上传与管理文档；发布态 draft → review → published；tag、整数版本、多文件类型；Admin 左右分栏（左列表 / 右操作）。
+> `{subdomain}.lxzxai.com/admin`：上传与管理文档；发布态 draft → review → published；tag、整数版本、每版本单文件；Admin 左右分栏（左列表 / 右操作）。
 
 
 | 字段 | 值 |
@@ -10,7 +10,7 @@
 | **Approved by** | team |
 | **Approved at** | 2026-07-21 |
 
-> **数据模型依赖**：列名与版本行语义以 [02-data-model.md](../02-data-model.md)、[F07](F07-doc-indexing-data-model.md)、[F08](F08-data-model-naming-refactor.md) 为准（`publish_status`、`doc_group_id`、`version_number`、`doc_id`/`doc_name`/`doc_tag`、`is_latest`）。本 Feature 行为仍有效。
+> **数据模型依赖**：列名与版本行语义以 [02-data-model.md](../02-data-model.md)、[F07](F07-doc-ingestion-data-model.md)、[F08](F08-data-model-naming-refactor.md) 为准（`publish_status`、`doc_group_id`、`version_number`、`doc_id`/`doc_name`/`doc_tag`、`is_latest`）。本 Feature 行为仍有效。
 
 ## 范围
 
@@ -86,7 +86,7 @@ flowchart TD
   G -->|是| H[publish_status review]
   H --> I[Publish]
   I --> J[publish_status published]
-  J --> K[触发 F04 索引任务 index_status=pending]
+  J --> K[触发 F04 摄入任务 ingest_status=pending]
 
   L[已 published 文档再编辑] --> M[同组新版本行 version+1]
   M --> C
@@ -100,7 +100,7 @@ flowchart TD
 |------|----------|----------------|----------|------------------|
 | **1. 上传文档** | 把资料放进系统、可先不完整 | `draft` | 新建、选文件、填元数据、**保存草稿** | 用户主动点「提交审核」 |
 | **2. 审核/校验** | 确认信息齐全、可发布 | `review` | **提交审核**（结构校验）→ 通过后待发布 | 用户点「发布」并 confirm |
-| **3. 发布** | 正式进知识库、可被 RAG 检索 | `published` | **发布** → 触发 F04 索引（`index_status=pending`） | — |
+| **3. 发布** | 正式进知识库、可被 RAG 检索 | `published` | **发布** → 触发 F04 索引（`ingest_status=pending`） | — |
 
 Phase 1 的「审核/校验」= **自动结构校验**（title、tag、文件）；不做人工审批、不做 SOP 语义校验（Phase 2 扩展）。
 
@@ -111,10 +111,10 @@ Phase 1 的「审核/校验」= **自动结构校验**（title、tag、文件）
 | 步骤 | 用户操作 | 系统行为 | 校验 |
 |------|----------|----------|------|
 | 1.1 | 点「新建文档」 | 创建版本行（`document_group_id` 新、`version=1`、`is_latest=true`、`publish_status=draft`） | — |
-| 1.2 | 选择本地文件（可多选） | 前端校验扩展名与 20MB；通过后上传至存储，写入 `document_file`（FK → 版本行） | 类型、大小（F03-T07/T07b/T08） |
+| 1.2 | 选择本地文件（单选；再选则覆盖） | 前端校验扩展名与 20MB；通过后上传至存储，写入本版本 `file_storage_path`/`file_name`/`file_content_type`/`file_size_bytes`，并写 `file_metadata.upload`（`schema_version=1`）与 `file_modified_at` | 类型、大小（F03-T07/T07b/T08）；元数据（F03-T18） |
 | 1.3 | 填写 Title、Tag（可选） | 表单本地状态更新 | Tag 若填则须为合法枚举（F03-T06） |
 | 1.4 | 点「保存草稿」 | `PATCH` 持久化 title/tag/文件关联；**`publish_status` 仍为 `draft`** | 文件规则同上；title/tag 可不填 |
-| 1.5 | 关闭页面后再打开 | 从列表选中，加载已保存的 draft 与文件列表 | — |
+| 1.5 | 关闭页面后再打开 | 从列表选中，加载已保存的 draft 与当前源文件元数据 | — |
 
 **说明**：
 
@@ -138,7 +138,7 @@ Phase 1 的「审核/校验」= **自动结构校验**（title、tag、文件）
 |----|------|--------------|
 | title | 非空、去首尾空格后长度 ≥ 1 | 「请填写文档标题」 |
 | tag | 必须为受控枚举之一 | 「请选择文档分类」 |
-| 源文件 | 至少 1 个已通过类型/大小校验的文件 | 「请至少上传一份文档」 |
+| 源文件 | `file_storage_path`/`file_name` 非空（已通过类型/大小校验） | 「请至少上传一份文档」 |
 
 **Phase 2 预留**（本阶段扩展，不改 publish_status 枚举）：
 
@@ -158,15 +158,15 @@ Phase 1 的「审核/校验」= **自动结构校验**（title、tag、文件）
 |------|----------|----------|------|
 | 3.1 | 点「发布」 | 弹出 confirm：版本展示 `v{N}`、tag、文件数、索引提示 | 仅 `review` 可点 |
 | 3.2 | confirm 取消 | 无变更 | — |
-| 3.3 | confirm 确认 | `publish_status` → `published`；首次 `version=1`（展示 `v1`）；通常 `index_status=pending` 并写入 index_job（F04） | F03-T05 |
-| 3.3a | 同租户内容去重 | 若同租户已有相同 `content_sha256` 且对方 `index_status=ready` + `is_latest` + 未删：仍 `published`，**跳过** 本版切块/embedding，但 **克隆** 对方 section/chunk 到本 `doc_id` 使可检索；`index_status=ready`；HTTP **200**；响应含 `warning_code=duplicate_content_sha256` 与面向用户的 `warning` 文案 | F07-T08 |
-| 3.4 | 发布成功 | Stepper 到 Published；展示索引状态区（`index_status`：pending → processing → ready/failed；job 队列态可并行展示） | — |
+| 3.3 | confirm 确认 | `publish_status` → `published`；首次 `version=1`（展示 `v1`）；通常 `ingest_status=pending` 并写入 ingest_job（F04） | F03-T05 |
+| 3.3a | 同租户内容去重 | 若**其它** `doc_group_id` 已有相同 `file_content_sha256` 且对方 `publish_status=published` + `ingest_status=ready` + `is_latest` + 未删：HTTP **409**；`detail` 含 `code=duplicate_content_sha256`、`existing_document_id`、`existing_title`、中文 `message`；本版 **回退 `draft`**（可编辑/换文件），**不** publish、**不**建 ingest_job、**不**克隆索引。同组新版本相同文件允许发布 | F07-T08 |
+| 3.4 | 发布成功 | Stepper 到 Published；展示索引状态区（`ingest_status`：pending → processing → ready/failed；job 队列态可并行展示） | — |
 
 **发布后**：
 
-- 该版本可被 F06 RAG 检索（须 F04：`index_status=ready`）。
+- 该版本可被 F06 RAG 检索（须 F04：`ingest_status=ready`）。
 - 列表 badge 显示「已发布」+ 版本（如 `v1`）。
-- 索引失败时：`publish_status` 仍为 `published`，`index_status=failed`，检索不到内容（见 F04）；UI 在 `IndexJobStatusCard` 展示 failed + error。
+- 索引失败时：`publish_status` 仍为 `published`，`ingest_status=failed`，检索不到内容（见 F04）；UI 在 `IngestJobStatusCard` 展示 failed + error。
 
 ### 已发布文档的再编辑（published → draft → …）
 
@@ -208,8 +208,8 @@ sequenceDiagram
 
   U->>UI: 发布（confirm）
   UI->>API: POST /documents/{id}/publish
-  API-->>UI: publish_status=published, version=1, index_status=pending
-  API->>Idx: 创建 index_job
+  API-->>UI: publish_status=published, version=1, ingest_status=pending
+  API->>Idx: 创建 ingest_job
   UI-->>U: Stepper → Published，展示索引状态
 ```
 
@@ -226,7 +226,7 @@ sequenceDiagram
 
 路径前缀与鉴权同 F05：经 `/backend/v1/...`，Host → tenant_id，需登录成员。
 
-> **API 过渡**：JSON 可继续暴露字段名 `status` 作为 `publish_status` 的别名；内部与库列用 `publish_status`。响应宜含 `document_group_id`、`version`（int）、`index_status`、`is_latest`。
+> **API 过渡**：JSON 可继续暴露字段名 `status` 作为 `publish_status` 的别名；内部与库列用 `publish_status`。响应宜含 `document_group_id`、`version`（int）、`ingest_status`、`is_latest`。
 
 ## 行为规则
 
@@ -234,7 +234,7 @@ sequenceDiagram
 2. 发布态只允许按序前进：`draft → review → published`；禁止跳步（如 draft 直接 publish）。列名为 **`publish_status`**（API 可暂用 `status` 别名）。
 3. **Save（草稿）**：持久化标题、tag、`folder_path`、文件（或正文）；**`publish_status` 保持 `draft`**。Phase 1 不强制 title/tag/文件齐全。
 4. **Submit for Review**：仅 `draft` 可提交；检查必填项（title、tag、至少一份源文件）；通过 → `review`。Phase 1 不做 SOP 语义校验；Phase 2 在此步或 publish 前增加 SOP 门禁。
-5. **Publish**：仅 `review` 可 publish → `published`；成功后必须触发索引（F04），版本行 `index_status=pending`。若同租户已有相同 `content_sha256` 的 ready latest（未删），则跳过冗余 parse/embedding，并克隆对方 section/chunk 到本 `doc_id`：`index_status=ready`，HTTP 仍为 **200**，响应额外返回 `warning_code`（`duplicate_content_sha256`）与 `warning`（中文提醒）；**不得**静默成功而无提示。
+5. **Publish**：仅 `review` 可 publish → `published`；成功后必须触发摄入（F04），版本行 `ingest_status=pending`。若同租户**另一逻辑文档**（不同 `doc_group_id`）已有相同 `file_content_sha256` 且 `published`+`ready`+`is_latest`（未删）：HTTP **409**，响应 `detail` 含已有 `existing_document_id` / `existing_title` 与中文说明；本版 **回退为 `draft`**（Admin 回到可编辑页，便于换文件），禁止静默建第二份可检索索引。同组升版上传相同文件不视为冲突。
 6. Tag 为受控枚举（存储值 → 界面展示名）：`news` 公告动态 | `sop` 标准操作规程 | `best_practice` 最佳实践 | `knowledge_base` 知识库 | `faq` 常见问题。填写说明见 [F03-doc-admin-ui.md](F03-doc-admin-ui.md) §字段中文说明。
 7. **版本**：整数列 `version`；首次创建/首版为 **1**（展示 **`v1`**）；此后每次从已发布再编辑并重新走完发布流，同组 `version` **+1**（如 1→2，展示 `v2`）。**不用** text `1.0` / minor+0.1。
 8. 允许扩展名仅 `.txt` / `.md` / `.pdf`；拒绝其它类型（含 `.exe`、`.docx` / `.pptx` / `.xlsx` 直至 F08、以及旧版 `.doc` / `.ppt` / `.xls`）；单文件大小上限 **20MB**。
@@ -248,10 +248,9 @@ sequenceDiagram
 
 | 实体 | 关键字段 / 约束 |
 |------|----------------|
-| document（版本行） | `doc_id`（版本 PK）, `tenant_id`, `doc_group_id`, `version_number`（int）, `is_latest`, `doc_name`, `doc_tag`, `publish_status`, `index_status`, `doc_size`, `source_metadata`, `folder_path`（可选）, `created_by`, `deleted_at` |
-| document_file | `document_id`（→ 版本行）, `version`（int）, `storage_key`, `filename`, `content_type`, `size_bytes` |
+| document（版本行） | `doc_id`（版本 PK）, `tenant_id`, `doc_group_id`, `version_number`（int）, `is_latest`, `doc_name`, `doc_tag`, `publish_status`, `ingest_status`, `file_storage_path`, `file_name`, `file_content_type`, `file_size_bytes`, `file_type`, `file_metadata`, `folder_path`（可选）, `created_by`, `deleted_at` |
 | publish_status | `draft` \| `review` \| `published`（API 过渡期响应字段可仍名 `status`） |
-| index_status | `pending` \| `processing` \| `ready` \| `failed`（由 F04 推进；Admin 只读展示） |
+| ingest_status | `pending` \| `processing` \| `ready` \| `failed`（由 F04 推进；Admin 只读展示） |
 
 时间戳列 `create_at` / `update_at` 见 [00-constraints.mdc](../../../../.cursor/rules/00-constraints.mdc) §3.2。明细见 [02-data-model.md](../02-data-model.md)。
 
@@ -265,7 +264,7 @@ sequenceDiagram
 | F03-T02 | Given `publish_status`=`draft` When 直接 publish | Then 4xx；仍为 draft | api |
 | F03-T03 | Given `publish_status`=`draft` 且缺 title When submit for review | Then 4xx；仍为 draft | api |
 | F03-T04 | Given `publish_status`=`draft` 且必填齐全 When submit for review | Then `publish_status`=`review` | api |
-| F03-T05 | Given `publish_status`=`review` When publish | Then `publish_status`=`published`；`version=1`（展示 `v1`）；`index_status=pending`；产生索引任务事件/记录 | api |
+| F03-T05 | Given `publish_status`=`review` When publish | Then `publish_status`=`published`；`version=1`（展示 `v1`）；`ingest_status=pending`；产生摄入任务事件/记录 | api |
 | F03-T06 | Given tag=`unknown` When save | Then 4xx | api |
 | F03-T07 | Given 上传 `.exe` When save | Then 4xx | api |
 | F03-T07b | Given 上传 `.doc` / `.ppt` / `.docx` / `.pptx` / `.xlsx` When save（Phase 1） | Then 4xx；Office OOXML 由 F08 启用 | api |
@@ -279,3 +278,4 @@ sequenceDiagram
 | F03-T15 | Given 列表按 `publish_status`=`review` 过滤 | Then 仅返回 review | api |
 | F03-T16 | Given 文档 `folder_path=sop/hr` When 打开列表 | Then 左侧树在 `sop` → `hr` 下可见该文档 | e2e |
 | F03-T17 | Given 选中文档 When 右侧删除 | Then 列表不再展示；若曾 published 则 section/chunk `is_latest=false` 且不可检索（与 F04 对齐） | e2e |
+| F03-T18 | Given 成员上传合法文件 When GET 详情 | Then `file_metadata.schema_version=1` 且含 `upload.original_filename`/`upload.size_bytes`/`upload.uploaded_at`；`file_modified_at` 非空 | api |

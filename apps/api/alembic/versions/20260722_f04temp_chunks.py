@@ -18,7 +18,7 @@ down_revision: Union[str, Sequence[str], None] = "20260722_merge_f03_f06"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
-# Must match rag_api.indexing.constants.EMBEDDING_DIM
+# Must match rag_api.ingestion.constants.EMBEDDING_DIM
 _EMBEDDING_DIM = 1024
 
 

@@ -31,7 +31,7 @@ from rag_api.api.schemas.conversations import (
 )
 from rag_api.clients.llm import LlmClient
 from rag_api.db.session import get_session_factory
-from rag_api.indexing.search import KnowledgeSearcher
+from rag_api.ingestion.search import KnowledgeSearcher
 from rag_api.services import conversations as conv_svc
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])

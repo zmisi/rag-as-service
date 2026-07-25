@@ -1,6 +1,6 @@
-"""Indexing package — F04 (parse / sections / chunk / embed / search)."""
+"""Ingestion package — F04 (parse / sections / chunk / embed / search)."""
 
-from rag_api.indexing.search import (
+from rag_api.ingestion.search import (
     ChunkHit,
     EmptyKnowledgeSearcher,
     FakeKnowledgeSearcher,
