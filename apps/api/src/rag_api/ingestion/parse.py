@@ -56,6 +56,8 @@ class ParseError(Exception):
 
 @dataclass(frozen=True)
 class ParseOutcome:
+    """Parse result with route metadata for logging and downstream indexing."""
+
     text: str
     route: str  # text | pymupdf | docling
     skeleton: bool | None = None
@@ -64,6 +66,8 @@ class ParseOutcome:
 
 
 class DocumentParser(Protocol):
+    """Convert uploaded file bytes to Markdown (or plain text)."""
+
     def parse_to_markdown(self, filename: str, data: bytes) -> str:
         """Return Markdown (or plain text). Empty string if no extractable text."""
         ...
@@ -86,6 +90,8 @@ def _non_ws(s: str) -> str:
 
 @dataclass(frozen=True)
 class PdfFastMetrics:
+    """Quality metrics from a PyMuPDF fast text-layer extraction."""
+
     page_count: int
     total_chars: int
     chars_per_page: float
@@ -165,6 +171,7 @@ class TextDocumentParser:
     """Decode .txt/.md; binary Office/PDF requires routed parser / Docling."""
 
     def parse_to_markdown(self, filename: str, data: bytes) -> str:
+        """Decode plain text suffixes; reject binary PDF/Office without Docling."""
         suffix = Path(filename).suffix.lower()
         if suffix in _TEXT_SUFFIXES:
             return _decode_text(data)
@@ -205,10 +212,12 @@ class DoclingDocumentParser:
         self._text = TextDocumentParser()
 
     def parse_to_markdown(self, filename: str, data: bytes) -> str:
+        """Run Docling structure path and render blocks as Markdown."""
         blocks = self.parse_to_blocks(filename, data)
         return blocks_to_markdown(blocks)
 
     def parse_to_blocks(self, filename: str, data: bytes) -> list[ParseBlock]:
+        """Convert file bytes to tagged blocks via Docling (do_ocr=False)."""
         suffix = Path(filename).suffix.lower()
         if suffix in _TEXT_SUFFIXES:
             md = self._text.parse_to_markdown(filename, data)
@@ -257,6 +266,7 @@ class RoutedDocumentParser:
         return self._docling
 
     def parse_outcome(self, filename: str, data: bytes) -> ParseOutcome:
+        """Parse with skeleton-aware PDF routing; records route in ``last_routes``."""
         suffix = Path(filename).suffix.lower()
         if suffix in _TEXT_SUFFIXES:
             if suffix in {".txt", ".md"}:
@@ -291,6 +301,7 @@ class RoutedDocumentParser:
         raise ParseError(f"Unsupported file type: {suffix or '(none)'}")
 
     def parse_to_markdown(self, filename: str, data: bytes) -> str:
+        """Return Markdown text from ``parse_outcome``."""
         return self.parse_outcome(filename, data).text
 
     def _parse_office(self, filename: str, data: bytes) -> ParseOutcome:
@@ -516,12 +527,14 @@ class ScriptedDocumentParser:
         self.last_routes: list[tuple[str, str]] = []
 
     def parse_outcome(self, filename: str, data: bytes) -> ParseOutcome:
+        """Resolve markdown from mapping/default; honor fail/empty suffix rules."""
         text = self.parse_to_markdown(filename, data)
         outcome = ParseOutcome(text=text, route=self._route)
         self.last_routes.append((filename, outcome.route))
         return outcome
 
     def parse_to_markdown(self, filename: str, data: bytes) -> str:
+        """Return scripted markdown or delegate to ``TextDocumentParser``."""
         suffix = Path(filename).suffix.lower()
         if suffix in self._fail_suffixes:
             raise ParseError(f"scripted failure for {filename}")
@@ -535,6 +548,7 @@ class ScriptedDocumentParser:
 
 
 def get_document_parser() -> DocumentParser:
+    """Return the production skeleton-aware document parser."""
     return RoutedDocumentParser()
 
 

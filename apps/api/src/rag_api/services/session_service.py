@@ -12,6 +12,8 @@ from sqlalchemy.orm import Session as DbSession
 
 @dataclass(frozen=True, slots=True)
 class SessionIssueResult:
+    """Newly created session row with plaintext token for Set-Cookie."""
+
     session: Session
     token: str
     expires_at: datetime
@@ -19,11 +21,15 @@ class SessionIssueResult:
 
 @dataclass(frozen=True, slots=True)
 class ValidatedSession:
+    """Authenticated user bound to a valid non-revoked session."""
+
     user: User
     session: Session
 
 
 class SessionService:
+    """Issue, validate, revoke, and slide session expiry."""
+
     def __init__(
         self,
         db_session: DbSession,
@@ -34,6 +40,7 @@ class SessionService:
         self._repository = SessionRepository(db_session)
 
     def create_session(self, user_id: UUID) -> SessionIssueResult:
+        """Create a session with hashed token and configured TTL."""
         token = generate_session_token()
         token_hash = hash_session_token(token)
         expires_at = datetime.utcnow() + timedelta(days=self._settings.session_ttl_days)
@@ -45,6 +52,7 @@ class SessionService:
         return SessionIssueResult(session=session, token=token, expires_at=expires_at)
 
     def validate_session(self, token: str) -> ValidatedSession | None:
+        """Resolve a valid session to its user, or None if invalid or expired."""
         token_hash = hash_session_token(token)
         session = self._repository.find_valid_by_token_hash(token_hash)
         if session is None:
@@ -55,6 +63,7 @@ class SessionService:
         return ValidatedSession(user=user, session=session)
 
     def revoke_session(self, token: str) -> bool:
+        """Revoke session by token; return False if unknown or already revoked."""
         token_hash = hash_session_token(token)
         session = self._repository.find_by_token_hash(token_hash)
         if session is None or session.revoked_at is not None:
@@ -63,6 +72,7 @@ class SessionService:
         return True
 
     def maybe_slide_expiry(self, session: Session) -> bool:
+        """Renew expiry when within slide threshold; return whether updated."""
         threshold_days = self._settings.session_slide_renew_threshold_days
         ttl_days = self._settings.session_ttl_days
         remaining = session.expires_at - datetime.utcnow()
@@ -73,4 +83,5 @@ class SessionService:
         return True
 
     def cookie_max_age_seconds(self) -> int:
+        """Max-Age for session cookie derived from configured session TTL."""
         return self._settings.session_ttl_days * 24 * 60 * 60

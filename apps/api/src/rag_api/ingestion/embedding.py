@@ -18,7 +18,10 @@ logger = logging.getLogger(__name__)
 
 
 class Embedder(Protocol):
+    """Embedder contract: batch texts to L2-normalized vectors."""
+
     def embed(self, texts: list[str]) -> list[list[float]]:
+        """Return one embedding vector per input text."""
         ...
 
 
@@ -34,6 +37,7 @@ class HashingEmbedder:
         self._dim = dim
 
     def embed(self, texts: list[str]) -> list[list[float]]:
+        """Hash tokens into fixed-dim vectors without network I/O."""
         return [_l2_normalize(self._one(t)) for t in texts]
 
     def _one(self, text: str) -> list[float]:
@@ -66,6 +70,7 @@ class QwenEmbedder:
         self._client = httpx.Client(http2=False, timeout=60.0)
 
     def embed(self, texts: list[str]) -> list[list[float]]:
+        """Call DashScope embeddings API; raises if config or dim mismatch."""
         api_key = (self._settings.qwen_api_key or "").strip()
         base_url = (self._settings.qwen_base_url or "").strip().rstrip("/")
         if not api_key or not base_url:

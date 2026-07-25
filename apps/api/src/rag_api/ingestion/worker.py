@@ -1,17 +1,14 @@
-"""Index job worker: parse → H1–H6 sections → leaf chunk → embed → pgvector."""
+"""Ingest job orchestration: parse → sections → chunk → embed → repository persist."""
 
 from __future__ import annotations
 
-import hashlib
 import logging
-from datetime import datetime, timezone
-from uuid import UUID, uuid4
+from uuid import UUID
 
-from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from rag_api.config import get_settings
-from rag_api.db.models import Document, IngestJob
+from rag_api.db.models import IngestJob
 from rag_api.ingestion.chunker import chunk_text
 from rag_api.ingestion.embedding import Embedder, get_embedder
 from rag_api.ingestion.file_metadata import (
@@ -25,17 +22,15 @@ from rag_api.ingestion.sections import (
     build_section_tree,
     infer_chunk_type,
 )
+from rag_api.repositories.document_ingest_repository import (
+    DocumentIngestRepository,
+    PreparedLeaf,
+    PreparedSection,
+)
+from rag_api.repositories.ingest_job_repository import IngestJobRepository
 from rag_api.services.storage_service import StorageService
 
 logger = logging.getLogger(__name__)
-
-
-def _now() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
-
-def _vector_literal(vec: list[float]) -> str:
-    return "[" + ",".join(f"{x:.8f}" for x in vec) + "]"
 
 
 def _heading_path(path: str) -> list[str]:
@@ -55,37 +50,16 @@ def build_embedding_text(heading_path: list[str], content: str) -> str:
     return f"{prefix}\n\n{body}"
 
 
-def _pg_text_array_literal(parts: list[str]) -> str:
-    """Format a Python list as a PostgreSQL text[] literal."""
-    escaped: list[str] = []
-    for p in parts:
-        escaped.append('"' + p.replace("\\", "\\\\").replace('"', '\\"') + '"')
-    return "{" + ",".join(escaped) + "}"
-
-
-def _sha256_text(content: str) -> str:
-    return hashlib.sha256(content.encode("utf-8")).hexdigest()
-
-
 def mark_chunks_not_latest(
     db: Session,
     *,
     tenant_id: UUID,
     document_id: UUID,
 ) -> int:
-    result = db.execute(
-        text(
-            """
-            UPDATE rag_service.document_chunks
-            SET is_latest = false
-            WHERE tenant_id = :tenant_id
-              AND doc_id = :document_id
-              AND is_latest = true
-            """
-        ),
-        {"tenant_id": str(tenant_id), "document_id": str(document_id)},
+    """Set ``is_latest=False`` on all chunks for the document within tenant."""
+    return DocumentIngestRepository(db).mark_chunks_not_latest(
+        tenant_id=tenant_id, document_id=document_id
     )
-    return int(result.rowcount or 0)
 
 
 def mark_sections_not_latest(
@@ -94,19 +68,10 @@ def mark_sections_not_latest(
     tenant_id: UUID,
     document_id: UUID,
 ) -> int:
-    result = db.execute(
-        text(
-            """
-            UPDATE rag_service.document_sections
-            SET is_latest = false
-            WHERE tenant_id = :tenant_id
-              AND doc_id = :document_id
-              AND is_latest = true
-            """
-        ),
-        {"tenant_id": str(tenant_id), "document_id": str(document_id)},
+    """Set ``is_latest=False`` on all sections for the document within tenant."""
+    return DocumentIngestRepository(db).mark_sections_not_latest(
+        tenant_id=tenant_id, document_id=document_id
     )
-    return int(result.rowcount or 0)
 
 
 def mark_document_ingest_not_latest(
@@ -115,8 +80,10 @@ def mark_document_ingest_not_latest(
     tenant_id: UUID,
     document_id: UUID,
 ) -> None:
-    mark_chunks_not_latest(db, tenant_id=tenant_id, document_id=document_id)
-    mark_sections_not_latest(db, tenant_id=tenant_id, document_id=document_id)
+    """Demote document ingest rows and nested sections/chunks for the tenant."""
+    DocumentIngestRepository(db).mark_document_ingest_not_latest(
+        tenant_id=tenant_id, document_id=document_id
+    )
 
 
 # Back-compat aliases for callers still using deactivate_* names.
@@ -125,95 +92,18 @@ deactivate_document_sections = mark_sections_not_latest
 deactivate_document_ingest = mark_document_ingest_not_latest
 
 
-def _mark_other_group_versions_not_latest(
-    db: Session,
-    *,
-    tenant_id: UUID,
-    doc_group_id: UUID,
-    keep_document_id: UUID,
-) -> None:
-    others = list(
-        db.scalars(
-            select(Document).where(
-                Document.tenant_id == tenant_id,
-                Document.doc_group_id == doc_group_id,
-                Document.doc_id != keep_document_id,
-            )
-        ).all()
-    )
-    for other in others:
-        other.is_latest = False
-        mark_document_ingest_not_latest(
-            db, tenant_id=tenant_id, document_id=other.doc_id
-        )
-
-
-def _persist_sections_and_leaves(
-    db: Session,
-    *,
-    tenant_id: UUID,
-    document_id: UUID,
+def prepare_sections_for_persist(
     drafts: list[SectionDraft],
+    *,
     embedder: Embedder,
     target_tokens: int,
     overlap_tokens: int,
-) -> int:
-    """Insert sections + leaf chunks. Returns leaf count."""
-    path_to_id: dict[str, str] = {}
-    leaf_count = 0
-    all_leaf_texts: list[tuple[str, str, list[str]]] = []  # section_id, content, heading_path
-    chunk_index = 0
-
-    def _resolve_parent_id(parent_path: str | None) -> str | None:
-        """Walk up path ancestors until a persisted section is found."""
-        cur = parent_path
-        while cur:
-            found = path_to_id.get(cur)
-            if found is not None:
-                return found
-            if " > " not in cur:
-                return None
-            cur = cur.rsplit(" > ", 1)[0]
-        return None
+) -> list[PreparedSection]:
+    """Chunk + embed in memory; returns rows ready for DocumentIngestRepository."""
+    embed_inputs: list[str] = []
+    leaf_refs: list[tuple[int, str, list[str]]] = []  # section_idx, content, heading
 
     for section_index, draft in enumerate(drafts):
-        section_id = str(uuid4())
-        parent_id = _resolve_parent_id(draft.parent_path)
-        db.execute(
-            text(
-                """
-                INSERT INTO rag_service.document_sections
-                  (id, tenant_id, doc_id, parent_id, level, title, path,
-                   content, section_index, is_latest)
-                VALUES
-                  (
-                    CAST(:id AS uuid),
-                    CAST(:tenant_id AS uuid),
-                    CAST(:document_id AS uuid),
-                    CAST(:parent_id AS uuid),
-                    :level,
-                    :title,
-                    :path,
-                    :content,
-                    :section_index,
-                    true
-                  )
-                """
-            ),
-            {
-                "id": section_id,
-                "tenant_id": str(tenant_id),
-                "document_id": str(document_id),
-                "parent_id": parent_id,
-                "level": str(draft.level),
-                "title": draft.title,
-                "path": draft.path,
-                "content": draft.content,
-                "section_index": section_index,
-            },
-        )
-        path_to_id[draft.path] = section_id
-
         pieces = chunk_text(
             draft.content,
             target_tokens=target_tokens,
@@ -221,61 +111,36 @@ def _persist_sections_and_leaves(
         )
         heading = _heading_path(draft.path)
         for piece in pieces:
-            all_leaf_texts.append((section_id, piece, heading))
+            leaf_refs.append((section_index, piece, heading))
+            embed_inputs.append(build_embedding_text(heading, piece))
 
-    if not all_leaf_texts:
-        return 0
-
-    embed_inputs = [
-        build_embedding_text(heading, content)
-        for _section_id, content, heading in all_leaf_texts
-    ]
-    vectors = embedder.embed(embed_inputs)
-    for (section_id, content, heading), emb_text, vec in zip(
-        all_leaf_texts, embed_inputs, vectors, strict=True
+    vectors = embedder.embed(embed_inputs) if embed_inputs else []
+    leaves_by_section: list[list[PreparedLeaf]] = [[] for _ in drafts]
+    for (section_index, content, heading), emb_text, vec in zip(
+        leaf_refs, embed_inputs, vectors, strict=True
     ):
-        db.execute(
-            text(
-                """
-                INSERT INTO rag_service.document_chunks
-                  (chunk_id, tenant_id, doc_id, section_id, chunk_index, heading_path,
-                   content, embedding_text, chunk_type, content_hash, embedding,
-                   metadata_, is_latest)
-                VALUES
-                  (
-                    CAST(:id AS uuid),
-                    CAST(:tenant_id AS uuid),
-                    CAST(:document_id AS uuid),
-                    CAST(:section_id AS uuid),
-                    :chunk_index,
-                    CAST(:heading_path AS text[]),
-                    :content,
-                    :embedding_text,
-                    :chunk_type,
-                    :content_hash,
-                    CAST(:embedding AS vector),
-                    '{}'::jsonb,
-                    true
-                  )
-                """
-            ),
-            {
-                "id": str(uuid4()),
-                "tenant_id": str(tenant_id),
-                "document_id": str(document_id),
-                "section_id": section_id,
-                "chunk_index": chunk_index,
-                "heading_path": _pg_text_array_literal(heading),
-                "content": content,
-                "embedding_text": emb_text,
-                "chunk_type": infer_chunk_type(content),
-                "content_hash": _sha256_text(content),
-                "embedding": _vector_literal(vec),
-            },
+        leaves_by_section[section_index].append(
+            PreparedLeaf(
+                content=content,
+                heading_path=heading,
+                embedding_text=emb_text,
+                embedding=vec,
+                chunk_type=infer_chunk_type(content),
+            )
         )
-        chunk_index += 1
-        leaf_count += 1
-    return leaf_count
+
+    return [
+        PreparedSection(
+            level=draft.level,
+            title=draft.title,
+            path=draft.path,
+            parent_path=draft.parent_path,
+            content=draft.content,
+            section_index=section_index,
+            leaves=tuple(leaves_by_section[section_index]),
+        )
+        for section_index, draft in enumerate(drafts)
+    ]
 
 
 def reclaim_stuck_ingest_jobs(
@@ -284,36 +149,11 @@ def reclaim_stuck_ingest_jobs(
     older_than_seconds: int | None = None,
     tenant_id: UUID | None = None,
 ) -> int:
-    """Reset long-running jobs back to pending so workers can retry."""
-    settings = get_settings()
-    seconds = (
-        older_than_seconds
-        if older_than_seconds is not None
-        else settings.ingest_job_stuck_after_seconds
+    """Reset running jobs stuck past the threshold back to pending."""
+    return IngestJobRepository(db).reclaim_stuck(
+        older_than_seconds=older_than_seconds,
+        tenant_id=tenant_id,
     )
-    params: dict[str, object] = {"seconds": int(seconds)}
-    tenant_clause = ""
-    if tenant_id is not None:
-        tenant_clause = "AND tenant_id = CAST(:tenant_id AS uuid)"
-        params["tenant_id"] = str(tenant_id)
-    result = db.execute(
-        text(
-            f"""
-            UPDATE rag_service.ingest_jobs
-            SET status = 'pending',
-                error = 'reclaimed: stuck running',
-                finished_at = NULL
-            WHERE status = 'running'
-              AND started_at IS NOT NULL
-              AND started_at < (now() AT TIME ZONE 'utc')
-                    - make_interval(secs => :seconds)
-              {tenant_clause}
-            """
-        ),
-        params,
-    )
-    db.commit()
-    return int(result.rowcount or 0)
 
 
 def claim_pending_ingest_jobs(
@@ -322,46 +162,8 @@ def claim_pending_ingest_jobs(
     limit: int = 20,
     tenant_id: UUID | None = None,
 ) -> list[UUID]:
-    """Claim pending jobs with ``FOR UPDATE SKIP LOCKED`` (multi-worker safe)."""
-    reclaim_stuck_ingest_jobs(db, tenant_id=tenant_id)
-
-    params: dict[str, object] = {"limit": int(limit)}
-    tenant_clause = ""
-    if tenant_id is not None:
-        tenant_clause = "AND tenant_id = CAST(:tenant_id AS uuid)"
-        params["tenant_id"] = str(tenant_id)
-
-    rows = db.execute(
-        text(
-            f"""
-            SELECT id
-            FROM rag_service.ingest_jobs
-            WHERE status = 'pending'
-              {tenant_clause}
-            ORDER BY create_at ASC
-            FOR UPDATE SKIP LOCKED
-            LIMIT :limit
-            """
-        ),
-        params,
-    ).fetchall()
-    ids = [UUID(str(r[0])) for r in rows]
-    if not ids:
-        db.commit()
-        return []
-
-    now = _now()
-    for job_id in ids:
-        job = db.get(IngestJob, job_id)
-        if job is None or job.status != "pending":
-            continue
-        job.status = "running"
-        job.started_at = now
-        job.attempt_count = int(job.attempt_count or 0) + 1
-        job.error = None
-        job.finished_at = None
-    db.commit()
-    return ids
+    """Claim pending jobs with ``FOR UPDATE SKIP LOCKED``; returns claimed job IDs."""
+    return IngestJobRepository(db).claim_pending(limit=limit, tenant_id=tenant_id)
 
 
 def process_ingest_job(
@@ -373,15 +175,16 @@ def process_ingest_job(
     parser: DocumentParser | None = None,
     already_claimed: bool = False,
 ) -> IngestJob:
-    job = db.get(IngestJob, job_id)
+    """Run full ingest pipeline for one job; marks succeeded or failed on the document."""
+    jobs = IngestJobRepository(db)
+    docs = DocumentIngestRepository(db)
+
+    job = jobs.get(job_id)
     if job is None:
         raise ValueError(f"ingest_job not found: {job_id}")
 
     if not already_claimed:
-        job.status = "running"
-        job.started_at = _now()
-        job.attempt_count = int(job.attempt_count or 0) + 1
-        job.error = None
+        jobs.mark_running(job, increment_attempt=True)
         db.commit()
 
     settings = get_settings()
@@ -389,21 +192,15 @@ def process_ingest_job(
     storage = storage or StorageService()
 
     try:
-        doc = db.scalar(
-            select(Document).where(
-                Document.doc_id == job.doc_id, Document.tenant_id == job.tenant_id
-            )
-        )
+        doc = docs.get_document(tenant_id=job.tenant_id, document_id=job.doc_id)
         if doc is None:
             raise ParseError("document missing")
 
         if doc.publish_status != "published" or doc.deleted_at is not None:
-            mark_document_ingest_not_latest(
-                db, tenant_id=job.tenant_id, document_id=job.doc_id
+            docs.mark_document_ingest_not_latest(
+                tenant_id=job.tenant_id, document_id=job.doc_id
             )
-            job.status = "succeeded"
-            job.finished_at = _now()
-            job.error = "skipped: document not published"
+            jobs.mark_succeeded(job, error="skipped: document not published")
             db.commit()
             db.refresh(job)
             return job
@@ -432,44 +229,22 @@ def process_ingest_job(
         title_fallback = (doc.doc_name or "").strip() or fname
         drafts = build_section_tree(markdown, title_fallback=title_fallback)
 
-        # Clear any prior index rows for this version document_id before rewrite.
-        mark_document_ingest_not_latest(
-            db, tenant_id=job.tenant_id, document_id=job.doc_id
-        )
-        db.execute(
-            text(
-                """
-                DELETE FROM rag_service.document_chunks
-                WHERE tenant_id = CAST(:tenant_id AS uuid)
-                  AND doc_id = CAST(:document_id AS uuid)
-                """
-            ),
-            {"tenant_id": str(job.tenant_id), "document_id": str(job.doc_id)},
-        )
-        db.execute(
-            text(
-                """
-                DELETE FROM rag_service.document_sections
-                WHERE tenant_id = CAST(:tenant_id AS uuid)
-                  AND doc_id = CAST(:document_id AS uuid)
-                """
-            ),
-            {"tenant_id": str(job.tenant_id), "document_id": str(job.doc_id)},
-        )
+        docs.clear_for_rewrite(tenant_id=job.tenant_id, document_id=job.doc_id)
 
         leaf_count = 0
         if drafts:
-            leaf_count = _persist_sections_and_leaves(
-                db,
-                tenant_id=job.tenant_id,
-                document_id=job.doc_id,
-                drafts=drafts,
+            prepared = prepare_sections_for_persist(
+                drafts,
                 embedder=embedder,
                 target_tokens=settings.chunk_target_tokens,
                 overlap_tokens=settings.chunk_overlap_tokens,
             )
+            leaf_count = docs.insert_prepared_index(
+                tenant_id=job.tenant_id,
+                document_id=job.doc_id,
+                sections=prepared,
+            )
 
-        # Embedding audit on document only.
         provider = "qwen" if settings.qwen_embedding_enabled else "hashing"
         doc.embedding_provider = provider
         doc.embedding_model = settings.qwen_embedding_model
@@ -477,16 +252,13 @@ def process_ingest_job(
         doc.ingest_status = "ready"
         doc.error_message = None
         doc.is_latest = True
-        _mark_other_group_versions_not_latest(
-            db,
+        docs.mark_other_group_versions_not_latest(
             tenant_id=job.tenant_id,
             doc_group_id=doc.doc_group_id,
             keep_document_id=doc.doc_id,
         )
 
-        job.status = "succeeded"
-        job.finished_at = _now()
-        job.error = None
+        jobs.mark_succeeded(job)
         db.commit()
         logger.info(
             "ingest_job succeeded id=%s document_id=%s version=%s sections=%s leaves=%s",
@@ -499,15 +271,15 @@ def process_ingest_job(
     except Exception as exc:  # noqa: BLE001 — persist failure on job
         logger.exception("ingest_job failed id=%s", job_id)
         db.rollback()
-        job = db.get(IngestJob, job_id)
+        job = jobs.get(job_id)
         if job is not None:
-            job.status = "failed"
-            job.finished_at = _now()
-            job.error = str(exc)[:2000]
-            doc = db.get(Document, job.doc_id)
-            if doc is not None and doc.tenant_id == job.tenant_id:
-                doc.ingest_status = "failed"
-                doc.error_message = str(exc)[:2000]
+            jobs.mark_failed(job, error=str(exc))
+            failed_doc = docs.get_document(
+                tenant_id=job.tenant_id, document_id=job.doc_id
+            )
+            if failed_doc is not None:
+                failed_doc.ingest_status = "failed"
+                failed_doc.error_message = str(exc)[:2000]
             db.commit()
         raise
 
@@ -524,7 +296,9 @@ def process_pending_ingest_jobs(
     storage: StorageService | None = None,
     parser: DocumentParser | None = None,
 ) -> list[IngestJob]:
+    """Claim up to ``limit`` pending jobs and process each; returns finished job rows."""
     claimed = claim_pending_ingest_jobs(db, limit=limit, tenant_id=tenant_id)
+    jobs = IngestJobRepository(db)
     done: list[IngestJob] = []
     for job_id in claimed:
         try:
@@ -539,7 +313,7 @@ def process_pending_ingest_jobs(
                 )
             )
         except Exception:  # noqa: BLE001 — continue queue
-            refreshed = db.get(IngestJob, job_id)
+            refreshed = jobs.get(job_id)
             if refreshed is not None:
                 done.append(refreshed)
     return done

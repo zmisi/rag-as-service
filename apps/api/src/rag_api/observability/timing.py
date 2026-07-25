@@ -21,6 +21,7 @@ class StageTimer:
         self.stages: list[tuple[str, float]] = []
 
     def mark(self, stage: str, **extra: Any) -> float:
+        """Record elapsed time since the previous mark and log the stage."""
         now = time.perf_counter()
         ms = (now - self._last) * 1000.0
         self._last = now
@@ -35,6 +36,7 @@ class StageTimer:
         return ms
 
     def finish(self, **extra: Any) -> float:
+        """Log total elapsed time and per-stage breakdown, returning total milliseconds."""
         total_ms = (time.perf_counter() - self._t0) * 1000.0
         breakdown = " ".join(f"{name}={ms:.1f}ms" for name, ms in self.stages)
         fields = {
@@ -49,6 +51,7 @@ class StageTimer:
 
 @contextmanager
 def timed(label: str, **meta: Any) -> Iterator[None]:
+    """Context manager that logs wall-clock duration for a labeled block."""
     t0 = time.perf_counter()
     try:
         yield

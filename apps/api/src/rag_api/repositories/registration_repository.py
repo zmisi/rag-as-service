@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 
 @dataclass(frozen=True, slots=True)
 class RegistrationResult:
+    """User, tenant, and owner membership created in one transaction."""
+
     user: User
     tenant: Tenant
     member: TenantMember
@@ -30,6 +32,7 @@ class RegistrationRepository:
         tenant_name: str,
         user_name: str,
     ) -> RegistrationResult:
+        """Create user, tenant, and owner membership without committing."""
         user = self._users.create(
             email=email,
             password_hash=password_hash,

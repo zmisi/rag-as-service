@@ -25,6 +25,7 @@ def _redact_url(url: str) -> str:
 
 
 def alembic_config(database_url: str | None = None) -> Config:
+    """Build Alembic ``Config`` for the API package and optional database URL."""
     cfg = Config(str(_API_ROOT / "alembic.ini"))
     cfg.set_main_option("script_location", str(_API_ROOT / "alembic"))
     url = database_url or get_settings().database_url

@@ -41,11 +41,14 @@ SEARCH_KNOWLEDGE_SCHEMA: dict[str, Any] = {
 
 
 def tool_definitions() -> list[dict[str, Any]]:
+    """Return Phase 1 tool schemas exposed to the LLM (search_knowledge only)."""
     return [SEARCH_KNOWLEDGE_SCHEMA]
 
 
 @dataclass
 class ToolExecutionResult:
+    """Harness result: payload for DB plus untrusted text fed back to the LLM."""
+
     ok: bool
     tool_name: str
     payload: dict[str, Any]
@@ -62,6 +65,7 @@ class ToolExecutor:
         self._tenant_id = tenant_id
 
     def execute(self, name: str, arguments: dict[str, Any]) -> ToolExecutionResult:
+        """Run a whitelisted tool; tenant_id is never taken from model arguments."""
         if name not in TOOL_WHITELIST:
             return ToolExecutionResult(
                 ok=False,
@@ -146,6 +150,7 @@ class ToolExecutor:
 
 
 def dump_payload(payload: dict[str, Any], limit: int = 4000) -> str:
+    """JSON-serialize a payload for logs; truncate with ellipsis when over ``limit``."""
     text = json.dumps(payload, ensure_ascii=False)
     if len(text) > limit:
         return text[:limit] + "…"

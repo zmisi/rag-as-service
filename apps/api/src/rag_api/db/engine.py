@@ -8,6 +8,7 @@ from rag_api.config import get_settings
 
 @lru_cache
 def get_engine() -> Engine:
+    """Return a cached SQLAlchemy engine with ``rag_service`` search_path."""
     settings = get_settings()
     return create_engine(
         settings.database_url,

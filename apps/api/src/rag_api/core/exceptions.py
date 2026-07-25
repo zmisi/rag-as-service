@@ -4,6 +4,8 @@ from rag_api.domain.errors import DomainValidationError
 
 
 class RegistrationError(Exception):
+    """Registration failed with an API-facing code, message, and HTTP status."""
+
     def __init__(self, code: str, message: str, status_code: int = 400) -> None:
         self.code = code
         self.message = message
@@ -12,6 +14,7 @@ class RegistrationError(Exception):
 
 
 def registration_error_from_domain(exc: DomainValidationError) -> RegistrationError:
+    """Map a domain validation failure to a registration HTTP error."""
     status_code = 400
     if exc.code == "reserved":
         status_code = 400
@@ -19,6 +22,8 @@ def registration_error_from_domain(exc: DomainValidationError) -> RegistrationEr
 
 
 class LoginError(Exception):
+    """Login failed with an API-facing code, message, and HTTP status."""
+
     def __init__(self, code: str, message: str, status_code: int = 401) -> None:
         self.code = code
         self.message = message

@@ -29,6 +29,8 @@ _QWEN_HTTP_CLIENT = httpx.Client(
 
 @dataclass
 class ToolCall:
+    """One function tool call parsed from an LLM completion."""
+
     id: str
     name: str
     arguments: dict[str, Any]
@@ -36,6 +38,8 @@ class ToolCall:
 
 @dataclass
 class LlmResult:
+    """Normalized chat completion: text, tool calls, token usage, finish reason."""
+
     content: str | None = None
     tool_calls: list[ToolCall] = field(default_factory=list)
     usage: dict[str, Any] = field(default_factory=dict)
@@ -48,11 +52,14 @@ class LlmTimeoutError(Exception):
 
 
 class LlmClient(Protocol):
+    """LLM client contract for chat completions with optional tool definitions."""
+
     def complete(
         self,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
     ) -> LlmResult:
+        """Return assistant content and/or tool calls for the given messages."""
         ...
 
 
@@ -68,6 +75,7 @@ class ScriptedLlmClient:
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
     ) -> LlmResult:
+        """Pop the next scripted result or raise a scripted exception."""
         self.calls.append({"messages": messages, "tools": tools})
         if not self._script:
             return LlmResult(content="（脚本已耗尽）")
@@ -103,6 +111,7 @@ class QwenClient:
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
     ) -> LlmResult:
+        """POST to DashScope chat completions; retries transient connection errors."""
         api_key = (getattr(self._settings, "qwen_api_key", "") or "").strip()
         base_url = (getattr(self._settings, "qwen_base_url", "") or "").strip()
         model = (getattr(self._settings, "qwen_model", "") or "qwen-plus").strip()
@@ -322,6 +331,7 @@ class DevStubLlmClient:
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
     ) -> LlmResult:
+        """Heuristic stub: greet, auto search_knowledge, or summarize tool results."""
         if messages and messages[-1].get("role") == "tool":
             tool_text = str(messages[-1].get("content") or "")
             if "无命中" in tool_text or "无相关" in tool_text:

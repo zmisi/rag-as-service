@@ -18,10 +18,12 @@ def _default_searcher() -> PgKnowledgeSearcher:
 
 
 def get_knowledge_searcher() -> KnowledgeSearcher:
+    """Provide the default pgvector-backed knowledge searcher for Agent routes."""
     return _default_searcher()
 
 
 def get_llm_client() -> LlmClient:
+    """Resolve the LLM client from settings (Qwen, dev stub, or fallback Qwen)."""
     settings = get_settings()
     if settings.qwen_api_key:
         return QwenClient(settings)

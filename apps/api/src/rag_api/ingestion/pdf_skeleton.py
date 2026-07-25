@@ -7,6 +7,8 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class SkeletonProbe:
+    """Result of a lightweight PDF structure probe (TOC or font headings)."""
+
     has_skeleton: bool
     reason: str  # toc | font | force | none | empty
     toc_entries: int = 0

@@ -16,6 +16,8 @@ FAQ_PAGE_SIZE = 5
 
 @dataclass
 class FaqSuggestionItem:
+    """One FAQ portal suggestion with click stats and hot flag."""
+
     document_group_id: UUID
     document_id: UUID
     question: str
@@ -60,6 +62,7 @@ def list_faq_suggestions(
     tenant_id: UUID,
     offset: int = 0,
 ) -> list[FaqSuggestionItem]:
+    """Return a rotating page of FAQ suggestions starting at ``offset``."""
     if offset < 0:
         raise HTTPException(status_code=422, detail="offset must be >= 0")
     ranked = list_faq_candidates(db, tenant_id=tenant_id)
@@ -91,6 +94,7 @@ def click_faq_suggestion(
     tenant_id: UUID,
     document_group_id: UUID,
 ) -> FaqSuggestionItem:
+    """Increment click count for an FAQ doc group; 404 if not a candidate."""
     ranked = list_faq_candidates(db, tenant_id=tenant_id)
     match = next((item for item in ranked if item[0].doc_group_id == document_group_id), None)
     if match is None:

@@ -25,6 +25,8 @@ _PROXY_SECRET_HEADER = "X-Rag-Proxy-Secret"
 
 @dataclass(frozen=True)
 class AuthContext:
+    """Authenticated user bound to the tenant resolved from the request Host."""
+
     user_id: UUID
     tenant_id: UUID
     email: str
@@ -32,10 +34,12 @@ class AuthContext:
 
 
 def hostname_from_host_header(host_header: str) -> str:
+    """Strip port and lowercase the hostname portion of a Host header value."""
     return host_header.split(":")[0].lower()
 
 
 def parse_subdomain(host: str | None) -> str | None:
+    """Extract tenant subdomain from ``*.lxzxai.com`` Host values, or return None."""
     if not host:
         return None
     host = host.split(",")[0].strip().lower()
@@ -46,6 +50,7 @@ def parse_subdomain(host: str | None) -> str | None:
 
 
 def is_public_hostname(host_header: str, settings: Settings) -> bool:
+    """Return whether ``host_header`` is the apex domain or a tenant subdomain."""
     hostname = hostname_from_host_header(host_header.split(",")[0].strip())
     if hostname == settings.apex_host.lower():
         return True
@@ -107,6 +112,7 @@ def require_known_host(
     host: str | None = Header(default=None, alias="Host"),
     x_forwarded_host: str | None = Header(default=None, alias="X-Forwarded-Host"),
 ) -> None:
+    """Reject requests whose resolved Host is neither apex nor a tenant subdomain."""
     host_header = _raw_host(request, host, x_forwarded_host, settings)
     hostname = hostname_from_host_header(host_header.split(",")[0].strip())
     if hostname == settings.apex_host.lower():
@@ -123,6 +129,7 @@ def get_current_tenant(
     host: str | None = Header(default=None, alias="Host"),
     x_forwarded_host: str | None = Header(default=None, alias="X-Forwarded-Host"),
 ) -> Tenant:
+    """Resolve and return the active tenant for the request subdomain Host."""
     from rag_api.db.models.tenant import TENANT_STATUS_ACTIVE
 
     raw_host = _raw_host(request, host, x_forwarded_host, settings)
@@ -165,6 +172,7 @@ def get_session_user(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> User:
+    """Require a valid session cookie and return the authenticated user."""
     return _session_user_from_cookie(request, db, settings)
 
 
@@ -174,6 +182,7 @@ def get_current_user(
     settings: Settings = Depends(get_settings),
     x_test_user_id: str | None = Header(default=None, alias="X-Test-User-Id"),
 ) -> User:
+    """Authenticate via session cookie, or dev stub header when enabled."""
     from rag_api.db.models.user import USER_ACTIVE
 
     token = request.cookies.get(settings.session_cookie_name)
@@ -207,6 +216,7 @@ def require_tenant_member(
     tenant: Tenant = Depends(get_current_tenant),
     user: User = Depends(get_current_user),
 ) -> AuthContext:
+    """Ensure the current user is an active member of the resolved tenant."""
     from rag_api.db.models.tenant_member import MEMBER_ACTIVE
 
     member = db.scalar(

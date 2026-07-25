@@ -1,0 +1,46 @@
+---
+description: Python 公共 API 必须有 docstring（硬规则）；调用处不复述实现
+globs: "**/*.py"
+alwaysApply: false
+---
+
+# Python Docstring（硬规则）
+
+## 必须
+
+1. **`apps/api/src/rag_api/` 内所有 public** 类 / 方法 / 函数必须有 docstring（不以 `_` 开头的名字）。
+2. Docstring 写在**定义处**，用 Google 风格一句话即可；有副作用、失败语义、租户/级联写库时须写明。
+3. 机器门禁：`cd apps/api && ruff check src/rag_api`（见 `apps/api/pyproject.toml` 的 `D101`/`D102`/`D103`）。未过不得视为完成。
+4. 改到缺少 docstring 的 public API 时必须补上；**禁止**用 `# noqa: D101/D102/D103` 逃检。
+
+## 禁止
+
+1. 在**调用处**复述被调函数实现（「这个函数会读 PDF metadata…」）。名字 + 定义处 docstring 承担「干什么」。
+2. 用 `# noqa: D101` / `D102` / `D103` 给**新写或新改**的 public API 逃检。
+3. 空 docstring、`"""TODO"""`、仅重复函数名的无信息 docstring。
+
+## 调用处注释（可选）
+
+仅写 **why / 不变量**（例如「must not fail the ingest job」「merge only，保留 upload.*」），不写 what 说明书。
+
+## 豁免（与 Ruff `per-file-ignores` 对齐）
+
+| 范围 | 原因 |
+|------|------|
+| `tests/**`、`**/alembic/**` | 测试与迁移 |
+| `**/api/schemas/**`、`**/db/models/**` | 字段/列说明已由 Pydantic `Field` / 列注释承载 |
+| `**/api/v1/**` 的 endpoint 函数 `D103` | 可用 FastAPI `summary`/`description`；类仍要 D101/D102 |
+| 模块 / 包级 `D100`/`D104`、`__init__`/`魔法方法` | 不强制 |
+
+## 合格示例
+
+```python
+def mark_other_group_versions_not_latest(
+    self, *, tenant_id: UUID, doc_group_id: UUID, keep_document_id: UUID
+) -> None:
+    """Keep one document version as latest; demote siblings in the same doc_group.
+
+    Sets other documents' ``is_latest=False`` and demotes their sections/chunks.
+    Does not modify ``keep_document_id``.
+    """
+```

@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class ChunkHit:
+    """One retrieval hit: section full text, path, and cosine score."""
+
     chunk_id: str
     document_id: str
     content: str  # section full text (F04 retrieval contract)
@@ -27,6 +29,8 @@ class ChunkHit:
 
 
 class KnowledgeSearcher(Protocol):
+    """Tenant-scoped knowledge search over published, ready, latest index data."""
+
     def search(
         self,
         tenant_id: UUID,
@@ -46,6 +50,7 @@ class EmptyKnowledgeSearcher:
         query: str,
         top_k: int = 5,
     ) -> list[ChunkHit]:
+        """Return no hits (always empty list)."""
         return []
 
 
@@ -56,6 +61,7 @@ class FakeKnowledgeSearcher:
         self._corpus: dict[UUID, list[ChunkHit]] = {}
 
     def seed(self, tenant_id: UUID, chunks: list[ChunkHit]) -> None:
+        """Replace the in-memory corpus for ``tenant_id`` (tests only)."""
         self._corpus[tenant_id] = list(chunks)
 
     def search(
@@ -64,6 +70,7 @@ class FakeKnowledgeSearcher:
         query: str,
         top_k: int = 5,
     ) -> list[ChunkHit]:
+        """Substring-match query against tenant corpus; dedupe by section_id."""
         chunks = self._corpus.get(tenant_id, [])
         q = query.strip().lower()
         if not q:
@@ -128,6 +135,7 @@ class PgKnowledgeSearcher:
         query: str,
         top_k: int = 5,
     ) -> list[ChunkHit]:
+        """Embed query and pgvector-search latest leaves; tenant_id enforced in SQL."""
         q = (query or "").strip()
         if not q or top_k <= 0:
             return []
