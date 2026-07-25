@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from typing import Literal
 
-from rag_api.indexing.constants import (
+from rag_api.ingestion.constants import (
     CHARS_PER_TOKEN,
     CHUNK_OVERLAP_TOKENS,
     CHUNK_TARGET_TOKENS,

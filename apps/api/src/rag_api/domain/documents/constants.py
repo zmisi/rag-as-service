@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from uuid import UUID
 
 DOC_TAGS = frozenset(
     {"news", "sop", "best_practice", "knowledge_base", "faq"},
@@ -11,7 +12,8 @@ DOC_TAGS = frozenset(
 PUBLISH_STATUSES = frozenset({"draft", "review", "published"})
 DOC_STATUSES = PUBLISH_STATUSES  # API / legacy alias
 
-INDEX_STATUSES = frozenset({"pending", "processing", "ready", "failed"})
+INGEST_STATUSES = frozenset({"pending", "processing", "ready", "failed"})
+INDEX_STATUSES = INGEST_STATUSES  # deprecated alias
 
 CHUNK_TYPES = frozenset({"text", "table", "mixed"})
 
@@ -36,17 +38,38 @@ FILE_TYPE_MISMATCH_MESSAGE = (
     "(magic-byte check failed)."
 )
 
-# Same-tenant content hash skip (publish / index worker).
-# Skip re-parse / re-embed, but clone section/chunk rows onto the new doc_id
-# so search (chunk-centric) still hits the published duplicate.
-WARNING_CODE_DUPLICATE_CONTENT_SHA256 = "duplicate_content_sha256"
+# Same-tenant content dedup at publish (knowledge-base reject).
+# Other doc_group with same file_content_sha256 + published+ready → HTTP 409.
+ERROR_CODE_DUPLICATE_CONTENT_SHA256 = "duplicate_content_sha256"
+
+
+def duplicate_content_conflict_detail(
+    *,
+    existing_document_id: UUID | str,
+    existing_title: str | None,
+) -> dict[str, str]:
+    title = (existing_title or "").strip() or "未命名"
+    return {
+        "code": ERROR_CODE_DUPLICATE_CONTENT_SHA256,
+        "message": (
+            f"知识库中已存在相同内容的文档「{title}」，"
+            "请打开原文档或更换文件后再发布。"
+        ),
+        "existing_document_id": str(existing_document_id),
+        "existing_title": title,
+    }
+
+
+# Legacy aliases (historical clone-path jobs / responses). Prefer ERROR_CODE_*.
+WARNING_CODE_DUPLICATE_CONTENT_SHA256 = ERROR_CODE_DUPLICATE_CONTENT_SHA256
 WARNING_DUPLICATE_CONTENT_SHA256 = (
-    "同租户已存在相同内容且已索引完成的文档，本次已跳过重复切块与 embedding，"
-    "并复制已有索引到本文档；发布成功，可正常检索。"
+    "知识库中已存在相同内容的文档，发布已拒绝；请打开原文档或更换文件。"
 )
-INDEX_JOB_ERROR_DUPLICATE_CONTENT_SHA256 = (
-    "skipped: duplicate content_sha256 in tenant (index cloned)"
+INGEST_JOB_ERROR_DUPLICATE_CONTENT_SHA256 = (
+    "rejected: duplicate content_sha256 in tenant"
 )
+# Deprecated alias (one release).
+INDEX_JOB_ERROR_DUPLICATE_CONTENT_SHA256 = INGEST_JOB_ERROR_DUPLICATE_CONTENT_SHA256
 
 
 def is_valid_tag(tag: str) -> bool:

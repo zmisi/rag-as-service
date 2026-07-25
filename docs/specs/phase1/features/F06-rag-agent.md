@@ -24,7 +24,7 @@
 
 - 前置意图分类 / 路由（`rag_search` / `chitchat` / `clarify` 等）
 - 文档上传与发布（F03）
-- **解析 / 分块 / embedding / index_job / 向量 `search`**（F04）
+- **解析 / 分块 / embedding / ingest_job / 向量 `search`**（F04）
 - 会话列表 UI 细节（F05）
 - 对外 REST API 网关（Phase 2）
 - 非 RAG 业务工作流编排（仅预留路由扩展点）

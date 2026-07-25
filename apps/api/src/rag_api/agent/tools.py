@@ -11,7 +11,7 @@ from uuid import UUID
 
 from rag_api.agent.constants import TOOL_SEARCH_KNOWLEDGE, TOOL_WHITELIST, TOP_K
 from rag_api.agent.context import format_chunks_as_untrusted
-from rag_api.indexing.search import KnowledgeSearcher
+from rag_api.ingestion.search import KnowledgeSearcher
 from rag_api.observability.agent_log import log_agent, log_system_call, snip
 
 logger = logging.getLogger("rag_api.timing")

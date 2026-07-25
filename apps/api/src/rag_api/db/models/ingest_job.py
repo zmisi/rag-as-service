@@ -14,8 +14,8 @@ if TYPE_CHECKING:
     from rag_api.db.models.document import Document
 
 
-class IndexJob(TimestampMixin, Base):
-    __tablename__ = "index_jobs"
+class IngestJob(TimestampMixin, Base):
+    __tablename__ = "ingest_jobs"
 
     id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True),
@@ -37,4 +37,4 @@ class IndexJob(TimestampMixin, Base):
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
-    document: Mapped[Document] = relationship(back_populates="index_jobs")
+    document: Mapped[Document] = relationship(back_populates="ingest_jobs")

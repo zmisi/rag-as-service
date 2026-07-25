@@ -11,10 +11,10 @@ from sqlalchemy.orm import Session
 
 from rag_api.db.models import Document, DocumentChunk, Tenant, TenantMember, User
 from rag_api.db.models.user import USER_INACTIVE
-from rag_api.indexing.embedding import HashingEmbedder
-from rag_api.indexing.parse import ScriptedDocumentParser
-from rag_api.indexing.search import PgKnowledgeSearcher
-from rag_api.indexing.worker import process_index_job
+from rag_api.ingestion.embedding import HashingEmbedder
+from rag_api.ingestion.parse import ScriptedDocumentParser
+from rag_api.ingestion.search import PgKnowledgeSearcher
+from rag_api.ingestion.worker import process_ingest_job
 from rag_api.services.storage_service import StorageService
 from tests.helpers import register_user, tenant_host_headers
 from tests.integration.test_f04_doc_indexing import _published_doc_with_file, _seed_tenant
@@ -52,8 +52,8 @@ def test_f08_t01_schema_pk_uk_triggers(db_engine: Engine) -> None:
                 "doc_tag",
                 "doc_group_id",
                 "version_number",
-                "source_metadata",
-                "doc_size",
+                "file_metadata",
+                "file_size_bytes",
                 "publish_status",
             ),
             "document_chunks": ("chunk_id", "doc_id", "create_at", "update_at"),
@@ -196,7 +196,7 @@ def test_f08_t05_t06_version_unique(db: Session) -> None:
         doc_name="v1",
         doc_tag="faq",
         publish_status="draft",
-        index_status="pending",
+        ingest_status="pending",
         version_number=1,
         is_latest=True,
     )
@@ -211,7 +211,7 @@ def test_f08_t05_t06_version_unique(db: Session) -> None:
         doc_name="v2",
         doc_tag="faq",
         publish_status="draft",
-        index_status="pending",
+        ingest_status="pending",
         version_number=2,
         is_latest=True,
     )
@@ -227,7 +227,7 @@ def test_f08_t05_t06_version_unique(db: Session) -> None:
         doc_name="dup",
         doc_tag="faq",
         publish_status="draft",
-        index_status="pending",
+        ingest_status="pending",
         version_number=1,
         is_latest=False,
     )
@@ -258,8 +258,8 @@ def test_f08_t07_doc_size_and_names(client_a, db: Session, tenants: dict) -> Non
     doc = db.get(Document, doc_id)
     assert doc is not None
     assert doc.doc_name == "Named"
-    assert doc.doc_size == len(body)
-    assert doc.source_metadata is not None or True
+    assert doc.file_size_bytes == len(body)
+    assert doc.file_metadata is not None or True
 
 
 @pytest.mark.integration
@@ -272,7 +272,7 @@ def test_f08_t08_search_uses_renamed_columns(db: Session, tmp_path) -> None:
     )
     emb = HashingEmbedder()
     parser = ScriptedDocumentParser({doc.doc_id: md})
-    process_index_job(db, job.id, embedder=emb, storage=storage, parser=parser)
+    process_ingest_job(db, job.id, embedder=emb, storage=storage, parser=parser)
     searcher = PgKnowledgeSearcher(lambda: db, embedder=emb)
     hits = searcher.search(tenant.tenant_id, "F08_SEARCH_PHRASE", top_k=3)
     assert hits

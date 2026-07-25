@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from rag_api.indexing.parse import (
+from rag_api.ingestion.parse import (
     ParseError,
     PdfFastMetrics,
     RoutedDocumentParser,
@@ -16,14 +16,14 @@ from rag_api.indexing.parse import (
     extract_pdf_pages_pymupdf,
     pdf_fast_quality_ok,
 )
-from rag_api.indexing.parse_blocks import (
+from rag_api.ingestion.parse_blocks import (
     ParseBlock,
     blocks_to_markdown,
     count_block_kinds,
     markdown_to_blocks,
 )
-from rag_api.indexing.pdf_skeleton import detect_pdf_skeleton
-from rag_api.indexing.sections import build_section_tree
+from rag_api.ingestion.pdf_skeleton import detect_pdf_skeleton
+from rag_api.ingestion.sections import build_section_tree
 
 
 def _make_text_pdf(text: str, *, pages: int = 1) -> bytes:
@@ -170,7 +170,7 @@ def test_f04_t14_pymupdf_error_falls_back_to_docling(monkeypatch) -> None:
         raise ParseError("pymupdf explode")
 
     monkeypatch.setattr(
-        "rag_api.indexing.parse.extract_pdf_pages_pymupdf",
+        "rag_api.ingestion.parse.extract_pdf_pages_pymupdf",
         _boom,
     )
     outcome = parser.parse_outcome("broken.pdf", b"%PDF-1.4 stub")
@@ -338,10 +338,13 @@ def test_parse_blocks_roundtrip_and_section_tree() -> None:
     paths = {d.path for d in drafts}
     assert any("H2 A" in p for p in paths)
     assert any("H2 B" in p for p in paths)
-    # H3 merged into H2 A content
-    h2a = next(d for d in drafts if "H2 A" in d.path)
-    assert "deep-body" in h2a.content
+    # F04-T20: H3 is its own leaf; phrase isolated from H2 A body.
+    h2a = next(d for d in drafts if d.path.endswith("H2 A"))
+    deep = next(d for d in drafts if "H3 deep" in d.path)
     assert "UNIQUE_A" in h2a.content
+    assert "deep-body" not in h2a.content
+    assert "deep-body" in deep.content
+    assert deep.parent_path and deep.parent_path.endswith("H2 A")
 
 
 def test_blocks_to_markdown_image_placeholder() -> None:

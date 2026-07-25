@@ -8,10 +8,10 @@ Phase 索引见 [../01-phase-list.md](../01-phase-list.md)。
 | F01 | 注册与租户子域 | `review` | `lxzxai.com` | — | [F01-registration-tenancy.md](features/F01-registration-tenancy.md) |
 | F02 | Email 登录与会话 | `done` | `lxzxai.com`、`{subdomain}.lxzxai.com` | F01 | [F02-email-auth.md](features/F02-email-auth.md) |
 | F03 | 文档管理 | `done` | `{subdomain}.lxzxai.com/admin` | F02 | [F03-doc-admin.md](features/F03-doc-admin.md) |
-| F04 | 文档索引与内部检索（PDF 骨架感知双路由；H1–H6 + leaf 向量） | `done` | 后台 / 租户隔离 | F03 | [F04-doc-indexing.md](features/F04-doc-indexing.md) |
+| F04 | 文档摄入与内部检索（PDF 骨架感知双路由；H1–H6 + leaf 向量） | `done` | 后台 / 租户隔离 | F03 | [F04-doc-ingestion.md](features/F04-doc-ingestion.md) |
 | F05 | 会话列表与归档 | `done` | `{subdomain}.lxzxai.com` | F02 | [F05-conversations.md](features/F05-conversations.md) |
 | F06 | RAG Agent | `done` | `{subdomain}.lxzxai.com` | F04, F05 | [F06-rag-agent.md](features/F06-rag-agent.md) |
-| F07 | 文档索引数据模型重构（版本行 / 双状态 / `is_latest` / 富 chunk） | `done` | 后台 / 租户隔离 | F03, F04 | [F07-doc-indexing-data-model.md](features/F07-doc-indexing-data-model.md) |
+| F07 | 文档摄入数据模型重构（版本行 / 双状态 / `is_latest` / 富 chunk） | `done` | 后台 / 租户隔离 | F03, F04 | [F07-doc-ingestion-data-model.md](features/F07-doc-ingestion-data-model.md) |
 | F08 | 数据模型列命名与身份字段重构 | `done` | 全局 schema | F01, F07 | [F08-data-model-naming-refactor.md](features/F08-data-model-naming-refactor.md) |
 
 ```mermaid

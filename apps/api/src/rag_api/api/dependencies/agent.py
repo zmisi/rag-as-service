@@ -7,8 +7,8 @@ from functools import lru_cache
 from rag_api.clients.llm import DevStubLlmClient, LlmClient, QwenClient
 from rag_api.config import get_settings
 from rag_api.db.session import get_session_factory
-from rag_api.indexing.embedding import get_embedder
-from rag_api.indexing.search import KnowledgeSearcher, PgKnowledgeSearcher
+from rag_api.ingestion.embedding import get_embedder
+from rag_api.ingestion.search import KnowledgeSearcher, PgKnowledgeSearcher
 
 
 @lru_cache

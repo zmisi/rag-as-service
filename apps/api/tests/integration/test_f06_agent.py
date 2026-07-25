@@ -11,7 +11,7 @@ from rag_api.agent.constants import MAX_STEPS, NO_HIT_PHRASE, TOOL_SEARCH_KNOWLE
 from rag_api.api.dependencies import get_llm_client
 from rag_api.clients.llm import LlmResult, LlmTimeoutError, ScriptedLlmClient, ToolCall
 from rag_api.db.models import AgentRun, Message
-from rag_api.indexing.search import ChunkHit, FakeKnowledgeSearcher
+from rag_api.ingestion.search import ChunkHit, FakeKnowledgeSearcher
 
 pytestmark = pytest.mark.integration
 

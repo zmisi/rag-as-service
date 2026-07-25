@@ -54,9 +54,12 @@ services:
       PROXY_SHARED_SECRET: ${PROXY_SHARED_SECRET:-local-dev-proxy-secret}
       # Prefer values from env_file (../.env). Do not set QWEN_API_KEY here
       # with ${QWEN_API_KEY:-} — empty interpolation would override env_file.
-      # Dedicated worker consumes index_jobs; keep sync off in compose.
-      INDEX_SYNC_ON_PUBLISH: ${INDEX_SYNC_ON_PUBLISH:-false}
-      INDEX_JOB_STUCK_AFTER_SECONDS: ${INDEX_JOB_STUCK_AFTER_SECONDS:-1800}
+      # Dedicated worker consumes ingest_jobs; keep sync off in compose.
+      INGEST_SYNC_ON_PUBLISH: ${INGEST_SYNC_ON_PUBLISH:-false}
+      INGEST_JOB_STUCK_AFTER_SECONDS: ${INGEST_JOB_STUCK_AFTER_SECONDS:-1800}
+      # Docling models (Hugging Face). Set HF_ENDPOINT only if needed (e.g. mirror).
+      # Do not default to hf-mirror.com — some networks resolve it to 0.0.0.0.
+      HF_HOME: ${HF_HOME:-/app/var/hf-cache}
     ports:
       - "${API_PORT:-8000}:8000"
     volumes:
@@ -65,12 +68,13 @@ services:
       - ../apps/api/alembic:/app/alembic
       - ../apps/api/alembic.ini:/app/alembic.ini
       - api_storage:/app/var/storage
+      - hf_cache:/app/var/hf-cache
     depends_on:
       db:
         condition: service_healthy
     command: uvicorn rag_api.main:app --reload --host 0.0.0.0 --port 8000
 
-  index-worker:
+  ingest-worker:
     build:
       context: ../apps/api
       dockerfile: Dockerfile
@@ -86,25 +90,27 @@ services:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-rag_app}:${POSTGRES_PASSWORD:-rag_app}@db:5432/${POSTGRES_DB:-lxzxai_rag}
       AUTO_MIGRATE: "false"
       SECRET_KEY: ${SECRET_KEY:-change_me}
-      INDEX_SYNC_ON_PUBLISH: "false"
-      INDEX_WORKER_POLL_INTERVAL_SECONDS: ${INDEX_WORKER_POLL_INTERVAL_SECONDS:-2}
-      INDEX_WORKER_BATCH_SIZE: ${INDEX_WORKER_BATCH_SIZE:-5}
-      INDEX_JOB_STUCK_AFTER_SECONDS: ${INDEX_JOB_STUCK_AFTER_SECONDS:-1800}
+      INGEST_SYNC_ON_PUBLISH: "false"
+      INGEST_WORKER_POLL_INTERVAL_SECONDS: ${INGEST_WORKER_POLL_INTERVAL_SECONDS:-2}
+      INGEST_WORKER_BATCH_SIZE: ${INGEST_WORKER_BATCH_SIZE:-5}
+      INGEST_JOB_STUCK_AFTER_SECONDS: ${INGEST_JOB_STUCK_AFTER_SECONDS:-1800}
       QWEN_EMBEDDING_ENABLED: ${QWEN_EMBEDDING_ENABLED:-false}
       QWEN_EMBEDDING_MODEL: ${QWEN_EMBEDDING_MODEL:-text-embedding-v4}
       EMBEDDING_DIM: ${EMBEDDING_DIM:-1024}
       CHUNK_TARGET_TOKENS: ${CHUNK_TARGET_TOKENS:-800}
       CHUNK_OVERLAP_TOKENS: ${CHUNK_OVERLAP_TOKENS:-100}
+      HF_HOME: ${HF_HOME:-/app/var/hf-cache}
     volumes:
       - ../apps/api/src:/app/src
       - ../apps/api/pyproject.toml:/app/pyproject.toml
       - api_storage:/app/var/storage
+      - hf_cache:/app/var/hf-cache
     depends_on:
       db:
         condition: service_healthy
       api:
         condition: service_started
-    command: rag-index-worker
+    command: rag-ingest-worker
 
   web:
     build:
@@ -141,4 +147,5 @@ services:
 volumes:
   pgdata:
   api_storage:
+  hf_cache:
   web_node_modules:

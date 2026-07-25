@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import delete, select
 
 from rag_api.config import get_settings
-from rag_api.db.models import Document, DocumentChunk, DocumentFile, DocumentSection, IndexJob
+from rag_api.db.models import Document, DocumentChunk, DocumentSection, IngestJob
 from tests.helpers import tenant_host_headers
 
 HEADERS_A = tenant_host_headers("pytest-a")
@@ -18,11 +18,11 @@ PDF_BYTES = b"%PDF-1.4 minimal test content"
 
 
 @pytest.fixture(autouse=True)
-def disable_index_sync_on_publish(monkeypatch):
+def disable_ingest_sync_on_publish(monkeypatch):
     """Keep publish → pending job assertions stable (indexing covered by F04/F07)."""
     get_settings.cache_clear()
     settings = get_settings()
-    monkeypatch.setattr(settings, "index_sync_on_publish", False)
+    monkeypatch.setattr(settings, "ingest_sync_on_publish", False)
     yield
     get_settings.cache_clear()
 
@@ -31,8 +31,7 @@ def disable_index_sync_on_publish(monkeypatch):
 def wipe_documents(db):
     db.execute(delete(DocumentChunk))
     db.execute(delete(DocumentSection))
-    db.execute(delete(IndexJob))
-    db.execute(delete(DocumentFile))
+    db.execute(delete(IngestJob))
     db.execute(delete(Document))
     db.commit()
 
@@ -63,8 +62,9 @@ def test_f03_t01_save_draft_with_pdf(client_a, db):
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["status"] == "draft"
-    assert len(body["files"]) == 1
-    assert body["files"][0]["filename"] == "sample.pdf"
+    assert body["file_name"] == "sample.pdf"
+    assert body["file_size_bytes"] > 0
+    assert body["file_storage_path"]
 
 
 def test_f03_t02_draft_cannot_publish(client_a):
@@ -102,7 +102,7 @@ def test_f03_t04_submit_review_success(client_a):
     assert r.json()["status"] == "review"
 
 
-def test_f03_t05_publish_creates_index_job(client_a, db):
+def test_f03_t05_publish_creates_ingest_job(client_a, db):
     doc_id = _create_doc(client_a)
     _upload_pdf(client_a, doc_id)
     client_a.patch(
@@ -117,9 +117,9 @@ def test_f03_t05_publish_creates_index_job(client_a, db):
     assert body["status"] == "published"  # API alias of publish_status
     assert body["publish_status"] == "published"
     assert body["version"] == 1
-    assert body["index_status"] in ("pending", "processing")
+    assert body["ingest_status"] in ("pending", "processing")
     job = db.scalar(
-        select(IndexJob).where(IndexJob.doc_id == doc_id)
+        select(IngestJob).where(IngestJob.doc_id == doc_id)
     )
     assert job is not None
     assert job.status == "pending"
@@ -237,3 +237,18 @@ def test_f03_t11_list_filter_by_tag(client_a):
     items = r.json()
     assert len(items) == 1
     assert items[0]["tag"] == "faq"
+
+
+def test_f03_t18_upload_writes_file_metadata_upload(client_a):
+    doc_id = _create_doc(client_a)
+    _upload_pdf(client_a, doc_id)
+    r = client_a.get(f"/v1/documents/{doc_id}", headers=HEADERS_A)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    meta = body["file_metadata"]
+    assert meta["schema_version"] == 1
+    upload = meta["upload"]
+    assert upload["original_filename"] == "sample.pdf"
+    assert upload["size_bytes"] == len(PDF_BYTES)
+    assert upload["uploaded_at"]
+    assert body["file_modified_at"]

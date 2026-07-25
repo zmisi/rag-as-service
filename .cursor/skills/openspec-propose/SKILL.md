@@ -99,6 +99,7 @@ After completing all artifacts, summarize:
 - The schema defines what each artifact should contain - follow it
 - Read dependency artifacts for context before creating new ones
 - Use `template` as the structure for your output file - fill in its sections
+- **Language**: Write all artifact Markdown in **Chinese** (see repo `openspec/config.yaml` and `.cursor/rules/00-constraints.mdc` §10). Keep code identifiers, paths, env keys, and Test Case IDs in English inside backticks.
 - **IMPORTANT**: `context` and `rules` are constraints for YOU, not content for the file
   - Do NOT copy `<context>`, `<rules>`, `<project_context>` blocks into the artifact
   - These guide what you write, but should never appear in the output

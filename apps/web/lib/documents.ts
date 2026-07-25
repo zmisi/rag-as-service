@@ -1,6 +1,6 @@
 export type DocStatus = "draft" | "review" | "published";
 
-export type IndexStatus = "pending" | "processing" | "ready" | "failed";
+export type IngestStatus = "pending" | "processing" | "ready" | "failed";
 
 export type DocTag =
   | "news"
@@ -17,30 +17,25 @@ export type DocSummary = {
   tag: string;
   status: DocStatus;
   publish_status?: DocStatus;
-  index_status?: IndexStatus;
+  ingest_status?: IngestStatus;
   version: number;
   is_latest?: boolean;
   create_at: string;
   update_at: string;
 };
 
-export type DocFile = {
-  id: string;
-  filename: string;
-  content_type: string;
-  size_bytes: number;
-  version: number;
-  create_at: string;
-  update_at: string;
-};
-
 export type DocDetail = DocSummary & {
-  files: DocFile[];
+  file_name?: string | null;
+  file_content_type?: string | null;
+  file_size_bytes?: number;
+  file_storage_path?: string | null;
+  file_metadata?: Record<string, unknown> | null;
+  file_modified_at?: string | null;
   warning_code?: string | null;
   warning?: string | null;
 };
 
-export type IndexJobStatus = {
+export type IngestJobStatus = {
   status: "pending" | "running" | "succeeded" | "failed";
   error?: string | null;
   warning_code?: string | null;

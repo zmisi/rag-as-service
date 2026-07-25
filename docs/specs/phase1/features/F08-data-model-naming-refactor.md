@@ -97,14 +97,14 @@
 | `document_group_id` → **`doc_group_id`** | 逻辑文档组 |
 | `version` → **`version_number`** | `int`，组内从 1 递增 |
 | `metadata_` → **`source_metadata`** | `jsonb` |
-| **保留 `publish_status`** | **不**改名为笼统的 `status`（避免与 `index_status` 混淆）；取值仍 `draft`\|`review`\|`published` |
+| **保留 `publish_status`** | **不**改名为笼统的 `status`（避免与 `ingest_status` 混淆）；取值仍 `draft`\|`review`\|`published` |
 | **保留 `deleted_at`** | 软删；**不**把 `delete` 塞进 `publish_status` |
-| 新增 **`doc_size`** | `bigint` NULL 或 NOT NULL DEFAULT 0；本版本源文件合计字节（权威可由 `document_files` 汇总后回写） |
+| 新增 **`file_size_bytes`** | `bigint` NULL 或 NOT NULL DEFAULT 0；本版本源文件字节数（单文件；历史名 `doc_size`） |
 | 时间戳 | `create_at` / `update_at` |
 
 **列顺序（逻辑）**：
 
-`doc_id`, `tenant_id`, `doc_name`, `doc_tag`, `doc_group_id`, `content_sha256`, `publish_status`, `index_status`, `error_message`, `source_type`, `source_uri`, `source_metadata`, `source_modified_at`, `embedding_provider`, `embedding_model`, `embedding_dimension`, `is_latest`, `version_number`, `doc_size`, `created_by`, `deleted_at`, `create_at`, `update_at`（**无** `source_key`；审计列置末）
+`doc_id`, `tenant_id`, `doc_name`, `doc_tag`, `doc_group_id`, `publish_status`, `ingest_status`, `error_message`, `file_name`, `file_type`, `file_size_bytes`, `file_content_type`, `file_content_sha256`, `file_modified_at`, `file_storage_path`, `file_metadata`, `version_number`, `is_latest`, `embedding_provider`, `embedding_model`, `embedding_dimension`, `created_by`, `create_at`, `update_at`, `deleted_at`（**无** `source_*` / `storage_key` / `document_files`）
 
 **索引 / 约束命名**（**禁止**仅 `UNIQUE(doc_group_id)`——会破坏多版本）：
 
@@ -136,7 +136,7 @@
 
 凡 FK / ORM / SQL 引用旧列名处一并改，至少：
 
-- `document_files.document_id` → `doc_id`；`document_sections.document_id` → `doc_id`；`index_jobs.document_id` → `doc_id`
+- `document_sections.document_id` → `doc_id`；`ingest_jobs.document_id` → `doc_id`（历史：曾有 `document_files`，现已并入 `documents`）
 - `sessions.user_id`、`conversations.user_id`、`documents.created_by` 等仍指向 `users.user_id`
 - 所有 `tenant_id` FK → `tenants.tenant_id`
 
@@ -144,7 +144,7 @@
 
 - 取消 `tenant_members.user_id` 或注册时不写成员行
 - 将 `doc_group_id` 设为全局/单列唯一（禁止多版本）
-- 把 `publish_status` 与 `index_status` 合并为单一 `status`，或用状态值 `delete` 替代 `deleted_at`
+- 把 `publish_status` 与 `ingest_status` 合并为单一 `status`，或用状态值 `delete` 替代 `deleted_at`
 - 将时间戳改为 `created_at` / `updated_at`
 - 邀请制 Add member 完整产品（可预留；Phase 1 可仅支持「已存在 email 的用户加入」）
 - 计费扣款、支付网关（仅落 `charge_mode` 列）
@@ -169,9 +169,9 @@ flowchart TD
 3. **`tenant_members.user_id` 必填**；注册成功必须插入 owner 成员行（`user_id`=新用户，`member_name`←`user_name`，`active=1`，`role=owner`）。
 4. Add member：目标必须是已有 `users` 行（或其接受邀请后创建的用户）；写入其 `user_id`。禁止无成员行代替登录账号表。
 5. `users.active=0` 或成员 `active=0`：不得以该身份访问对应租户（具体 401/403 与 F02 对齐，实现时固定一种）。
-6. 文档仍为**版本行**：`doc_id`=版本 PK；同组多 `version_number`；检索门禁仍为 `publish_status=published` AND `index_status=ready` AND `deleted_at IS NULL` AND `is_latest`（section/chunk）+ `tenant_id`。
+6. 文档仍为**版本行**：`doc_id`=版本 PK；同组多 `version_number`；检索门禁仍为 `publish_status=published` AND `ingest_status=ready` AND `deleted_at IS NULL` AND `is_latest`（section/chunk）+ `tenant_id`。
 7. API JSON 可对旧字段名做**短期别名**（如 `status`→`publish_status`、`title`→`doc_name`），内部 ORM 用新列名；别名废弃计划在实现任务中注明。
-8. `doc_size`：publish/保存文件后更新为该版本关联 `document_files.size_bytes` 之和；无文件可为 `0`。
+8. `file_size_bytes`：publish/保存文件后更新为本版本源文件字节数；无文件可为 `0`。
 9. `tenants.status` Phase 1 取值：`active` \| `suspended`（默认 `active`）。`charge_mode` Phase 1 取值：`free` \| `standard`（默认 `free`）；可扩展但须 CHECK 或应用枚举。
 10. 字符串列一律 **`text`**（禁止 varchar）。
 
@@ -184,7 +184,7 @@ flowchart TD
 | tenants | `tenant_id` PK, `tenant_name` UK, `status`, `charge_mode`, `create_at`, `update_at` |
 | users | `user_id` PK, `user_name` UK, `email` UK, `password_hash`, `active`, `create_at`, `update_at` |
 | tenant_members | `member_id` PK, `tenant_id`, **`user_id` FK**, `member_name`, `active`, `role`; UK `(tenant_id,user_id)`, UK `(tenant_id,member_name)`, IX `(user_id)` |
-| documents | `doc_id` PK, `tenant_id`, `doc_name`, `doc_tag`, `doc_group_id`, `version_number`, `publish_status`, `index_status`, `source_metadata`, `doc_size`, `is_latest`, …; UK `(tenant_id,doc_group_id,version_number)`; partial UK latest |
+| documents | `doc_id` PK, `tenant_id`, `doc_name`, `doc_tag`, `doc_group_id`, `version_number`, `publish_status`, `ingest_status`, `source_metadata`, `doc_size`, `is_latest`, …; UK `(tenant_id,doc_group_id,version_number)`; partial UK latest |
 | document_chunks | `chunk_id` PK, `tenant_id`, `doc_id` FK, `chunk_index`, 富字段, `is_latest`; UK `(doc_id,chunk_index)` |
 
 ## Test Cases

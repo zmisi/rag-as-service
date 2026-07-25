@@ -8,22 +8,23 @@ from uuid import UUID, uuid4
 
 from fastapi import HTTPException
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
 from rag_api.config import get_settings
-from rag_api.db.models import Document, DocumentFile, IndexJob
+from rag_api.db.models import Document, IngestJob
 from rag_api.domain.documents.constants import (
-    INDEX_JOB_ERROR_DUPLICATE_CONTENT_SHA256,
     MAX_FILE_BYTES,
-    WARNING_CODE_DUPLICATE_CONTENT_SHA256,
-    WARNING_DUPLICATE_CONTENT_SHA256,
     content_sha256,
+    duplicate_content_conflict_detail,
     is_valid_tag,
     next_version,
 )
 from rag_api.domain.documents.file_type import FileTypeError, validate_file_type
-from rag_api.indexing.clone_index import clone_document_index
-from rag_api.indexing.worker import mark_document_index_not_latest, process_index_job
+from rag_api.ingestion.file_metadata import (
+    apply_modified_at_from_metadata,
+    build_upload_metadata,
+)
+from rag_api.ingestion.worker import mark_document_ingest_not_latest, process_ingest_job
 from rag_api.services.storage_service import StorageService
 
 
@@ -41,13 +42,11 @@ def _get_document(
     tenant_id: UUID,
 ) -> Document:
     doc = db.scalar(
-        select(Document)
-        .where(
+        select(Document).where(
             Document.doc_id == document_id,
             Document.tenant_id == tenant_id,
             Document.deleted_at.is_(None),
         )
-        .options(selectinload(Document.files))
     )
     if doc is None:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -66,10 +65,10 @@ def create_document(
         created_by=user_id,
         doc_group_id=group_id,
         publish_status="draft",
-        index_status="pending",
+        ingest_status="pending",
         version_number=1,
         is_latest=True,
-        source_metadata={},
+        file_metadata={},
     )
     db.add(doc)
     db.commit()
@@ -143,7 +142,8 @@ def add_file(
     filename: str,
     content_type: str,
     data: bytes,
-) -> DocumentFile:
+) -> Document:
+    """Attach or replace the single source file on this document version."""
     if len(data) > MAX_FILE_BYTES:
         raise HTTPException(status_code=400, detail="File exceeds 20MB limit")
     try:
@@ -158,38 +158,32 @@ def add_file(
         doc.publish_status = "draft"
 
     work_version = int(doc.version_number)
+    if doc.file_storage_path:
+        storage.delete(doc.file_storage_path)
 
-    storage_key = storage.storage_key(
+    storage_path = storage.storage_key(
         tenant_id=tenant_id,
         document_id=document_id,
         version=str(work_version),
         filename=filename,
     )
-    storage.write_bytes(storage_key, data)
+    storage.write_bytes(storage_path, data)
 
-    record = DocumentFile(
-        tenant_id=tenant_id,
-        doc_id=document_id,
-        version=work_version,
-        storage_key=storage_key,
+    doc.file_storage_path = storage_path
+    doc.file_name = filename
+    doc.file_content_type = content_type or "application/octet-stream"
+    doc.file_size_bytes = len(data)
+    doc.file_type = Path(filename).suffix.lower().lstrip(".") or None
+    doc.file_metadata = build_upload_metadata(
         filename=filename,
-        content_type=content_type or "application/octet-stream",
+        content_type=doc.file_content_type,
         size_bytes=len(data),
     )
-    db.add(record)
-    db.flush()
-    doc.doc_size = int(
-        db.scalar(
-            select(func.coalesce(func.sum(DocumentFile.size_bytes), 0)).where(
-                DocumentFile.doc_id == document_id,
-                DocumentFile.tenant_id == tenant_id,
-            )
-        )
-        or 0
-    )
+    doc.file_modified_at = apply_modified_at_from_metadata(doc.file_metadata)
+
     db.commit()
-    db.refresh(record)
-    return record
+    db.refresh(doc)
+    return doc
 
 
 def submit_for_review(
@@ -207,7 +201,7 @@ def submit_for_review(
         raise HTTPException(status_code=400, detail="Title is required")
     if not is_valid_tag(doc.doc_tag):
         raise HTTPException(status_code=400, detail="Tag is required")
-    if not doc.files:
+    if not doc.file_storage_path or not (doc.file_name or "").strip():
         raise HTTPException(status_code=400, detail="At least one file is required")
 
     doc.publish_status = "review"
@@ -216,26 +210,20 @@ def submit_for_review(
     return doc
 
 
-def _apply_source_metadata(
+def _apply_content_hash(
     doc: Document,
     storage: StorageService,
 ) -> None:
-    """Set content_sha256 / source_* from attached files when possible."""
-    files = list(doc.files or [])
-    if not files:
+    """Set file_content_sha256 / file_type from the single attached file."""
+    if not doc.file_storage_path:
         return
-    primary = files[0]
-    hasher_parts: list[bytes] = []
-    for f in sorted(files, key=lambda x: x.filename):
-        try:
-            hasher_parts.append(storage.read_bytes(f.storage_key))
-        except FileNotFoundError:
-            continue
-    if hasher_parts:
-        doc.content_sha256 = content_sha256(b"".join(hasher_parts))
-    doc.source_uri = primary.storage_key
-    ext = Path(primary.filename).suffix.lower().lstrip(".") or None
-    doc.source_type = ext
+    try:
+        data = storage.read_bytes(doc.file_storage_path)
+    except FileNotFoundError:
+        return
+    doc.file_content_sha256 = content_sha256(data)
+    if doc.file_name:
+        doc.file_type = Path(doc.file_name).suffix.lower().lstrip(".") or doc.file_type
 
 
 def _find_ready_duplicate(
@@ -244,21 +232,23 @@ def _find_ready_duplicate(
     tenant_id: UUID,
     content_hash: str | None,
     exclude_id: UUID,
+    exclude_doc_group_id: UUID | None,
 ) -> Document | None:
+    """Other logical doc (different doc_group) with same bytes already in KB."""
     if not content_hash:
         return None
-    return db.scalar(
-        select(Document)
-        .where(
-            Document.tenant_id == tenant_id,
-            Document.content_sha256 == content_hash,
-            Document.index_status == "ready",
-            Document.is_latest.is_(True),
-            Document.deleted_at.is_(None),
-            Document.doc_id != exclude_id,
-        )
-        .limit(1)
+    q = select(Document).where(
+        Document.tenant_id == tenant_id,
+        Document.file_content_sha256 == content_hash,
+        Document.publish_status == "published",
+        Document.ingest_status == "ready",
+        Document.is_latest.is_(True),
+        Document.deleted_at.is_(None),
+        Document.doc_id != exclude_id,
     )
+    if exclude_doc_group_id is not None:
+        q = q.where(Document.doc_group_id != exclude_doc_group_id)
+    return db.scalar(q.limit(1))
 
 
 def publish_document(
@@ -272,59 +262,32 @@ def publish_document(
         raise HTTPException(status_code=409, detail="Only review documents can be published")
 
     storage = StorageService()
-    _apply_source_metadata(doc, storage)
-
-    doc.publish_status = "published"
-    doc.index_status = "pending"
-    doc.error_message = None
+    _apply_content_hash(doc, storage)
 
     dup = _find_ready_duplicate(
         db,
         tenant_id=tenant_id,
-        content_hash=doc.content_sha256,
+        content_hash=doc.file_content_sha256,
         exclude_id=doc.doc_id,
+        exclude_doc_group_id=doc.doc_group_id,
     )
     if dup is not None:
-        clone_document_index(
-            db,
-            tenant_id=tenant_id,
-            source_document_id=dup.doc_id,
-            target_document_id=doc.doc_id,
-        )
-        doc.index_status = "ready"
-        doc.is_latest = True
-        doc.embedding_provider = dup.embedding_provider
-        doc.embedding_model = dup.embedding_model
-        doc.embedding_dimension = dup.embedding_dimension
-        # Keep other versions in this group from being listed as latest.
-        others = list(
-            db.scalars(
-                select(Document).where(
-                    Document.tenant_id == tenant_id,
-                    Document.doc_group_id == doc.doc_group_id,
-                    Document.doc_id != doc.doc_id,
-                )
-            ).all()
-        )
-        for other in others:
-            other.is_latest = False
-        job = IndexJob(
-            tenant_id=tenant_id,
-            doc_id=document_id,
-            version=int(doc.version_number),
-            status="succeeded",
-            error=INDEX_JOB_ERROR_DUPLICATE_CONTENT_SHA256,
-        )
-        db.add(job)
+        # Revert to draft so Admin shows editable form; do not publish.
+        doc.publish_status = "draft"
         db.commit()
-        db.refresh(doc)
-        return PublishResult(
-            document=doc,
-            warning_code=WARNING_CODE_DUPLICATE_CONTENT_SHA256,
-            warning=WARNING_DUPLICATE_CONTENT_SHA256,
+        raise HTTPException(
+            status_code=409,
+            detail=duplicate_content_conflict_detail(
+                existing_document_id=dup.doc_id,
+                existing_title=dup.doc_name,
+            ),
         )
 
-    job = IndexJob(
+    doc.publish_status = "published"
+    doc.ingest_status = "pending"
+    doc.error_message = None
+
+    job = IngestJob(
         tenant_id=tenant_id,
         doc_id=document_id,
         version=int(doc.version_number),
@@ -336,13 +299,14 @@ def publish_document(
     db.refresh(job)
 
     settings = get_settings()
-    if settings.index_sync_on_publish:
+    if settings.ingest_sync_on_publish:
         try:
-            process_index_job(db, job.id)
+            process_ingest_job(db, job.id)
         except Exception:  # noqa: BLE001 — publish already committed; job may be failed
             pass
         db.refresh(doc)
     return PublishResult(document=doc)
+
 
 def new_version(
     db: Session,
@@ -374,48 +338,35 @@ def new_version(
         doc_tag=old.doc_tag,
         created_by=old.created_by,
         publish_status="draft",
-        index_status="pending",
+        ingest_status="pending",
         version_number=new_ver,
         is_latest=True,
-        source_type=old.source_type,
-        source_uri=old.source_uri,
-        source_metadata=dict(old.source_metadata or {}),
+        file_type=old.file_type,
+        file_storage_path=old.file_storage_path,
+        file_name=old.file_name,
+        file_content_type=old.file_content_type,
+        file_size_bytes=int(old.file_size_bytes or 0),
+        file_metadata=dict(old.file_metadata or {}),
     )
     db.add(draft)
-    db.flush()
-
-    for f in old.files:
-        db.add(
-            DocumentFile(
-                tenant_id=tenant_id,
-                doc_id=draft.doc_id,
-                version=new_ver,
-                storage_key=f.storage_key,
-                filename=f.filename,
-                content_type=f.content_type,
-                size_bytes=f.size_bytes,
-            )
-        )
-    draft.doc_size = sum(f.size_bytes for f in old.files)
-
     db.commit()
     return _get_document(db, document_id=draft.doc_id, tenant_id=tenant_id)
 
 
-def latest_index_job(
+def latest_ingest_job(
     db: Session,
     *,
     document_id: UUID,
     tenant_id: UUID,
-) -> IndexJob | None:
+) -> IngestJob | None:
     _get_document(db, document_id=document_id, tenant_id=tenant_id)
     return db.scalar(
-        select(IndexJob)
+        select(IngestJob)
         .where(
-            IndexJob.doc_id == document_id,
-            IndexJob.tenant_id == tenant_id,
+            IngestJob.doc_id == document_id,
+            IngestJob.tenant_id == tenant_id,
         )
-        .order_by(IndexJob.create_at.desc())
+        .order_by(IngestJob.create_at.desc())
         .limit(1)
     )
 
@@ -442,7 +393,7 @@ def soft_delete_document(
     for row in siblings:
         row.deleted_at = now
         row.is_latest = False
-        mark_document_index_not_latest(
+        mark_document_ingest_not_latest(
             db, tenant_id=tenant_id, document_id=row.doc_id
         )
     db.commit()

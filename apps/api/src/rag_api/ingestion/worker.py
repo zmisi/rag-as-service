@@ -8,16 +8,19 @@ from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 from sqlalchemy import select, text
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
 from rag_api.config import get_settings
-from rag_api.db.models import Document, IndexJob
-from rag_api.domain.documents.constants import INDEX_JOB_ERROR_DUPLICATE_CONTENT_SHA256
-from rag_api.indexing.chunker import chunk_text
-from rag_api.indexing.clone_index import clone_document_index
-from rag_api.indexing.embedding import Embedder, get_embedder
-from rag_api.indexing.parse import DocumentParser, ParseError, parse_files_to_markdown
-from rag_api.indexing.sections import (
+from rag_api.db.models import Document, IngestJob
+from rag_api.ingestion.chunker import chunk_text
+from rag_api.ingestion.embedding import Embedder, get_embedder
+from rag_api.ingestion.file_metadata import (
+    apply_modified_at_from_metadata,
+    extract_document_properties,
+    merge_file_metadata,
+)
+from rag_api.ingestion.parse import DocumentParser, ParseError, parse_files_to_markdown
+from rag_api.ingestion.sections import (
     SectionDraft,
     build_section_tree,
     infer_chunk_type,
@@ -106,7 +109,7 @@ def mark_sections_not_latest(
     return int(result.rowcount or 0)
 
 
-def mark_document_index_not_latest(
+def mark_document_ingest_not_latest(
     db: Session,
     *,
     tenant_id: UUID,
@@ -119,7 +122,7 @@ def mark_document_index_not_latest(
 # Back-compat aliases for callers still using deactivate_* names.
 deactivate_document_chunks = mark_chunks_not_latest
 deactivate_document_sections = mark_sections_not_latest
-deactivate_document_index = mark_document_index_not_latest
+deactivate_document_ingest = mark_document_ingest_not_latest
 
 
 def _mark_other_group_versions_not_latest(
@@ -140,7 +143,7 @@ def _mark_other_group_versions_not_latest(
     )
     for other in others:
         other.is_latest = False
-        mark_document_index_not_latest(
+        mark_document_ingest_not_latest(
             db, tenant_id=tenant_id, document_id=other.doc_id
         )
 
@@ -275,7 +278,7 @@ def _persist_sections_and_leaves(
     return leaf_count
 
 
-def reclaim_stuck_index_jobs(
+def reclaim_stuck_ingest_jobs(
     db: Session,
     *,
     older_than_seconds: int | None = None,
@@ -286,7 +289,7 @@ def reclaim_stuck_index_jobs(
     seconds = (
         older_than_seconds
         if older_than_seconds is not None
-        else settings.index_job_stuck_after_seconds
+        else settings.ingest_job_stuck_after_seconds
     )
     params: dict[str, object] = {"seconds": int(seconds)}
     tenant_clause = ""
@@ -296,7 +299,7 @@ def reclaim_stuck_index_jobs(
     result = db.execute(
         text(
             f"""
-            UPDATE rag_service.index_jobs
+            UPDATE rag_service.ingest_jobs
             SET status = 'pending',
                 error = 'reclaimed: stuck running',
                 finished_at = NULL
@@ -313,14 +316,14 @@ def reclaim_stuck_index_jobs(
     return int(result.rowcount or 0)
 
 
-def claim_pending_index_jobs(
+def claim_pending_ingest_jobs(
     db: Session,
     *,
     limit: int = 20,
     tenant_id: UUID | None = None,
 ) -> list[UUID]:
     """Claim pending jobs with ``FOR UPDATE SKIP LOCKED`` (multi-worker safe)."""
-    reclaim_stuck_index_jobs(db, tenant_id=tenant_id)
+    reclaim_stuck_ingest_jobs(db, tenant_id=tenant_id)
 
     params: dict[str, object] = {"limit": int(limit)}
     tenant_clause = ""
@@ -332,7 +335,7 @@ def claim_pending_index_jobs(
         text(
             f"""
             SELECT id
-            FROM rag_service.index_jobs
+            FROM rag_service.ingest_jobs
             WHERE status = 'pending'
               {tenant_clause}
             ORDER BY create_at ASC
@@ -349,7 +352,7 @@ def claim_pending_index_jobs(
 
     now = _now()
     for job_id in ids:
-        job = db.get(IndexJob, job_id)
+        job = db.get(IngestJob, job_id)
         if job is None or job.status != "pending":
             continue
         job.status = "running"
@@ -361,7 +364,7 @@ def claim_pending_index_jobs(
     return ids
 
 
-def process_index_job(
+def process_ingest_job(
     db: Session,
     job_id: UUID,
     *,
@@ -369,10 +372,10 @@ def process_index_job(
     storage: StorageService | None = None,
     parser: DocumentParser | None = None,
     already_claimed: bool = False,
-) -> IndexJob:
-    job = db.get(IndexJob, job_id)
+) -> IngestJob:
+    job = db.get(IngestJob, job_id)
     if job is None:
-        raise ValueError(f"index_job not found: {job_id}")
+        raise ValueError(f"ingest_job not found: {job_id}")
 
     if not already_claimed:
         job.status = "running"
@@ -387,15 +390,15 @@ def process_index_job(
 
     try:
         doc = db.scalar(
-            select(Document)
-            .where(Document.doc_id == job.doc_id, Document.tenant_id == job.tenant_id)
-            .options(selectinload(Document.files))
+            select(Document).where(
+                Document.doc_id == job.doc_id, Document.tenant_id == job.tenant_id
+            )
         )
         if doc is None:
             raise ParseError("document missing")
 
         if doc.publish_status != "published" or doc.deleted_at is not None:
-            mark_document_index_not_latest(
+            mark_document_ingest_not_latest(
                 db, tenant_id=job.tenant_id, document_id=job.doc_id
             )
             job.status = "succeeded"
@@ -405,69 +408,32 @@ def process_index_job(
             db.refresh(job)
             return job
 
-        doc.index_status = "processing"
+        doc.ingest_status = "processing"
         doc.error_message = None
         db.commit()
 
-        # Same-tenant content hash: clone index, skip re-embed.
-        if doc.content_sha256:
-            dup = db.scalar(
-                select(Document)
-                .where(
-                    Document.tenant_id == job.tenant_id,
-                    Document.content_sha256 == doc.content_sha256,
-                    Document.index_status == "ready",
-                    Document.is_latest.is_(True),
-                    Document.deleted_at.is_(None),
-                    Document.doc_id != doc.doc_id,
-                )
-                .limit(1)
-            )
-            if dup is not None:
-                clone_document_index(
-                    db,
-                    tenant_id=job.tenant_id,
-                    source_document_id=dup.doc_id,
-                    target_document_id=doc.doc_id,
-                )
-                doc.index_status = "ready"
-                doc.error_message = None
-                doc.embedding_provider = dup.embedding_provider
-                doc.embedding_model = dup.embedding_model
-                doc.embedding_dimension = dup.embedding_dimension
-                doc.is_latest = True
-                _mark_other_group_versions_not_latest(
-                    db,
-                    tenant_id=job.tenant_id,
-                    doc_group_id=doc.doc_group_id,
-                    keep_document_id=doc.doc_id,
-                )
-                job.status = "succeeded"
-                job.finished_at = _now()
-                job.error = INDEX_JOB_ERROR_DUPLICATE_CONTENT_SHA256
-                db.commit()
-                db.refresh(job)
-                return job
-
-        files = [f for f in doc.files if f.version == job.version]
-        if not files:
-            files = list(doc.files)
-        if not files:
+        if not doc.file_storage_path:
             raise ParseError("no files attached")
 
-        payloads: list[tuple[str, bytes]] = []
-        for f in files:
-            raw = storage.read_bytes(f.storage_key)
-            payloads.append((f.filename, raw))
+        raw = storage.read_bytes(doc.file_storage_path)
+        fname = (doc.file_name or "").strip() or "upload.bin"
+        doc_props = extract_document_properties(fname, raw)
+        if doc_props:
+            doc.file_metadata = merge_file_metadata(
+                dict(doc.file_metadata or {}),
+                document=doc_props,
+            )
+            mod = apply_modified_at_from_metadata(doc.file_metadata)
+            if mod is not None:
+                doc.file_modified_at = mod
+        payloads: list[tuple[str, bytes]] = [(fname, raw)]
 
         markdown = parse_files_to_markdown(payloads, parser=parser)
-        title_fallback = (doc.doc_name or "").strip() or (
-            files[0].filename if files else "文档"
-        )
+        title_fallback = (doc.doc_name or "").strip() or fname
         drafts = build_section_tree(markdown, title_fallback=title_fallback)
 
         # Clear any prior index rows for this version document_id before rewrite.
-        mark_document_index_not_latest(
+        mark_document_ingest_not_latest(
             db, tenant_id=job.tenant_id, document_id=job.doc_id
         )
         db.execute(
@@ -508,7 +474,7 @@ def process_index_job(
         doc.embedding_provider = provider
         doc.embedding_model = settings.qwen_embedding_model
         doc.embedding_dimension = settings.embedding_dim
-        doc.index_status = "ready"
+        doc.ingest_status = "ready"
         doc.error_message = None
         doc.is_latest = True
         _mark_other_group_versions_not_latest(
@@ -523,7 +489,7 @@ def process_index_job(
         job.error = None
         db.commit()
         logger.info(
-            "index_job succeeded id=%s document_id=%s version=%s sections=%s leaves=%s",
+            "ingest_job succeeded id=%s document_id=%s version=%s sections=%s leaves=%s",
             job.id,
             job.doc_id,
             job.version,
@@ -531,16 +497,16 @@ def process_index_job(
             leaf_count,
         )
     except Exception as exc:  # noqa: BLE001 — persist failure on job
-        logger.exception("index_job failed id=%s", job_id)
+        logger.exception("ingest_job failed id=%s", job_id)
         db.rollback()
-        job = db.get(IndexJob, job_id)
+        job = db.get(IngestJob, job_id)
         if job is not None:
             job.status = "failed"
             job.finished_at = _now()
             job.error = str(exc)[:2000]
             doc = db.get(Document, job.doc_id)
             if doc is not None and doc.tenant_id == job.tenant_id:
-                doc.index_status = "failed"
+                doc.ingest_status = "failed"
                 doc.error_message = str(exc)[:2000]
             db.commit()
         raise
@@ -549,7 +515,7 @@ def process_index_job(
     return job
 
 
-def process_pending_jobs(
+def process_pending_ingest_jobs(
     db: Session,
     *,
     limit: int = 20,
@@ -557,13 +523,13 @@ def process_pending_jobs(
     embedder: Embedder | None = None,
     storage: StorageService | None = None,
     parser: DocumentParser | None = None,
-) -> list[IndexJob]:
-    claimed = claim_pending_index_jobs(db, limit=limit, tenant_id=tenant_id)
-    done: list[IndexJob] = []
+) -> list[IngestJob]:
+    claimed = claim_pending_ingest_jobs(db, limit=limit, tenant_id=tenant_id)
+    done: list[IngestJob] = []
     for job_id in claimed:
         try:
             done.append(
-                process_index_job(
+                process_ingest_job(
                     db,
                     job_id,
                     embedder=embedder,
@@ -573,7 +539,7 @@ def process_pending_jobs(
                 )
             )
         except Exception:  # noqa: BLE001 — continue queue
-            refreshed = db.get(IndexJob, job_id)
+            refreshed = db.get(IngestJob, job_id)
             if refreshed is not None:
                 done.append(refreshed)
     return done

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from rag_api.agent.loop import AgentLoop, LoopResult
 from rag_api.clients.llm import LlmClient
 from rag_api.db.models import AgentRun, AgentRunStep, Message
-from rag_api.indexing.search import KnowledgeSearcher
+from rag_api.ingestion.search import KnowledgeSearcher
 from rag_api.observability.timing import StageTimer
 from rag_api.observability.agent_log import log_agent, snip
 from rag_api.services import conversations as conv_svc

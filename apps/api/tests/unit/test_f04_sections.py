@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from rag_api.indexing.sections import (
+from rag_api.ingestion.sections import (
     build_section_tree,
     infer_chunk_type,
     normalize_numbered_outline,

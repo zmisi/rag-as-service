@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Rebuild document / document_file rows from local storage when DB rows were wiped.
+"""Rebuild document rows from local storage when DB rows were wiped.
 
-Skips tiny test fixtures named note.txt. Keeps existing storage_key paths.
-Creates published docs + pending index jobs (optional sync index).
+Skips tiny test fixtures named note.txt. Keeps existing file_storage_path paths.
+Creates published docs + pending ingest jobs (optional sync ingest).
+Each document version uses a single source file (first file in the version dir).
 
 Usage (repo root or apps/api):
   DATABASE_URL=postgresql+psycopg://... \\
@@ -17,17 +18,16 @@ from collections import defaultdict
 from pathlib import Path
 from uuid import UUID
 
-# Allow running from repo root
 API_SRC = Path(__file__).resolve().parents[1] / "apps" / "api" / "src"
 sys.path.insert(0, str(API_SRC))
 
 from sqlalchemy import create_engine, select
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 
 from rag_api.config import get_settings
-from rag_api.db.models import Document, DocumentFile, IndexJob, Tenant, TenantMember
+from rag_api.db.models import Document, IngestJob, Tenant, TenantMember
 from rag_api.domain.documents.constants import content_sha256
-from rag_api.indexing.worker import process_index_job
+from rag_api.ingestion.worker import process_ingest_job
 
 
 def _guess_tag(filename: str) -> str:
@@ -55,14 +55,12 @@ def restore(*, do_index: bool) -> None:
     if not root.is_dir():
         raise SystemExit(f"storage root missing: {root}")
 
-    # Group files: (tenant_id, doc_id) -> list[(version_dir, path)]
     groups: dict[tuple[UUID, UUID], list[tuple[str, Path]]] = defaultdict(list)
     for path in root.rglob("*"):
         if not path.is_file():
             continue
         if path.name == "note.txt" and path.stat().st_size <= 64:
             continue
-        # {tenant}/{doc}/{version}/{filename}
         try:
             rel = path.relative_to(root)
             tenant_s, doc_s, version_s, filename = rel.parts[:4]
@@ -93,7 +91,6 @@ def restore(*, do_index: bool) -> None:
                 print(f"keep existing doc {doc_id} ({existing.doc_name})")
                 continue
 
-            # Prefer highest version dir lexicographically (1 > 0.0)
             files_sorted = sorted(files, key=lambda item: item[0])
             version_dir = files_sorted[-1][0]
             version_files = [p for v, p in files_sorted if v == version_dir]
@@ -107,9 +104,10 @@ def restore(*, do_index: bool) -> None:
             primary = sorted(version_files, key=lambda p: p.name)[0]
             title = _title_from_filename(primary.name)
             tag = _guess_tag(primary.name)
-            blob = b"".join(p.read_bytes() for p in sorted(version_files, key=lambda p: p.name))
+            blob = primary.read_bytes()
             digest = content_sha256(blob)
-            total_size = sum(p.stat().st_size for p in version_files)
+            ctype = mimetypes.guess_type(primary.name)[0] or "application/octet-stream"
+            storage_path = str(primary.relative_to(root))
 
             doc = Document(
                 doc_id=doc_id,
@@ -119,34 +117,21 @@ def restore(*, do_index: bool) -> None:
                 doc_name=title,
                 doc_tag=tag,
                 publish_status="published",
-                index_status="pending",
+                ingest_status="pending",
                 version_number=version_number,
                 is_latest=True,
-                content_sha256=digest,
-                source_uri=str(primary.relative_to(root)),
-                source_type=primary.suffix.lstrip(".") or None,
-                doc_size=total_size,
-                source_metadata={},
+                file_content_sha256=digest,
+                file_storage_path=storage_path,
+                file_name=primary.name,
+                file_content_type=ctype,
+                file_type=primary.suffix.lstrip(".") or None,
+                file_size_bytes=primary.stat().st_size,
+                file_metadata={},
             )
             db.add(doc)
             db.flush()
 
-            for path in version_files:
-                ctype = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-                storage_key = str(path.relative_to(root))
-                db.add(
-                    DocumentFile(
-                        tenant_id=tenant_id,
-                        doc_id=doc_id,
-                        version=version_number,
-                        storage_key=storage_key,
-                        filename=path.name,
-                        content_type=ctype,
-                        size_bytes=path.stat().st_size,
-                    )
-                )
-
-            job = IndexJob(
+            job = IngestJob(
                 tenant_id=tenant_id,
                 doc_id=doc_id,
                 version=version_number,
@@ -158,14 +143,14 @@ def restore(*, do_index: bool) -> None:
             restored += 1
             print(
                 f"restored {tenant.tenant_name}/{doc_id} "
-                f"title={title!r} files={len(version_files)} job={job.id}"
+                f"title={title!r} file={primary.name} job={job.id}"
             )
 
             if do_index:
                 try:
-                    process_index_job(db, job.id)
+                    process_ingest_job(db, job.id)
                     db.refresh(doc)
-                    print(f"  indexed status={doc.index_status}")
+                    print(f"  indexed status={doc.ingest_status}")
                 except Exception as exc:  # noqa: BLE001
                     print(f"  index failed: {exc}")
 

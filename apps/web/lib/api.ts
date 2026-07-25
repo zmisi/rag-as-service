@@ -1,4 +1,4 @@
-import type { DocDetail, DocSummary, IndexJobStatus } from "./documents";
+import type { DocDetail, DocSummary, IngestJobStatus } from "./documents";
 
 const API_PREFIX = "/backend";
 
@@ -367,7 +367,20 @@ async function docApi<T>(path: string, init?: RequestInit): Promise<T> {
     let detail = res.statusText;
     try {
       const body = await res.json();
-      if (typeof body?.detail === "string") detail = body.detail;
+      if (typeof body?.detail === "string") {
+        detail = body.detail;
+      } else if (body?.detail && typeof body.detail === "object") {
+        const d = body.detail as {
+          message?: string;
+          existing_title?: string;
+          existing_document_id?: string;
+        };
+        detail =
+          d.message ||
+          (d.existing_title
+            ? `知识库中已存在相同内容的文档「${d.existing_title}」`
+            : JSON.stringify(body.detail));
+      }
     } catch {
       /* ignore */
     }
@@ -424,6 +437,6 @@ export function newDocumentVersion(id: string) {
   return docApi<DocDetail>(`/documents/${id}/new-version`, { method: "POST" });
 }
 
-export function getIndexStatus(id: string) {
-  return docApi<IndexJobStatus | null>(`/documents/${id}/index-status`);
+export function getIngestStatus(id: string) {
+  return docApi<IngestJobStatus | null>(`/documents/${id}/ingest-status`);
 }

@@ -1,37 +1,37 @@
 "use client";
 
-import type { IndexJobStatus } from "@/lib/documents";
+import type { IngestJobStatus } from "@/lib/documents";
 
-const LABELS: Record<IndexJobStatus["status"], string> = {
-  pending: "索引排队中…",
-  running: "索引进行中…",
-  succeeded: "索引成功",
-  failed: "索引失败",
+const LABELS: Record<IngestJobStatus["status"], string> = {
+  pending: "摄入排队中…",
+  running: "摄入进行中…",
+  succeeded: "摄入成功",
+  failed: "摄入失败",
 };
 
 type Props = {
-  job: IndexJobStatus | null;
+  job: IngestJobStatus | null;
   published: boolean;
 };
 
-export function IndexJobStatusCard({ job, published }: Props) {
+export function IngestJobStatusCard({ job, published }: Props) {
   if (!published) {
     return (
-      <section className="doc-index-card muted" aria-label="索引状态">
-        <p>尚未发布，暂无索引任务。</p>
+      <section className="doc-index-card muted" aria-label="摄入状态">
+        <p>尚未发布，暂无摄入任务。</p>
       </section>
     );
   }
   if (!job) {
     return (
-      <section className="doc-index-card muted" aria-label="索引状态">
-        <p>暂无索引记录。</p>
+      <section className="doc-index-card muted" aria-label="摄入状态">
+        <p>暂无摄入记录。</p>
       </section>
     );
   }
   return (
-    <section className="doc-index-card" aria-label="索引状态">
-      <h3 className="doc-section-title">索引状态</h3>
+    <section className="doc-index-card" aria-label="摄入状态">
+      <h3 className="doc-section-title">摄入状态</h3>
       <p>{LABELS[job.status]}</p>
       {job.warning ? (
         <p className="doc-alert-warning" role="status">

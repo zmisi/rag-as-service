@@ -11,7 +11,7 @@ from typing import Protocol
 import httpx
 
 from rag_api.config import Settings, get_settings
-from rag_api.indexing.constants import EMBEDDING_DIM, QWEN_EMBEDDING_MODEL
+from rag_api.ingestion.constants import EMBEDDING_DIM, QWEN_EMBEDDING_MODEL
 from rag_api.observability.agent_log import log_system_call
 
 logger = logging.getLogger(__name__)

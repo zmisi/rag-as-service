@@ -14,13 +14,13 @@ from sqlalchemy.orm import Session
 
 from rag_api.config import get_settings
 from rag_api.db.models import Document as DocRow
-from rag_api.db.models import DocumentChunk, DocumentFile, DocumentSection, IndexJob
-from rag_api.indexing.embedding import HashingEmbedder
-from rag_api.indexing.search import PgKnowledgeSearcher
-from rag_api.indexing.worker import process_index_job
+from rag_api.db.models import DocumentChunk, DocumentSection, IngestJob
+from rag_api.ingestion.embedding import HashingEmbedder
+from rag_api.ingestion.search import PgKnowledgeSearcher
+from rag_api.ingestion.worker import process_ingest_job
 from tests.helpers import tenant_host_headers
 
-HEADERS_A = tenant_host_headers("tenant-a")
+HEADERS_A = tenant_host_headers("pytest-a")
 
 
 def _docx_bytes(paragraph: str) -> bytes:
@@ -57,8 +57,7 @@ def _xlsx_bytes(cell: str, *, empty: bool = False) -> bytes:
 def wipe_docs(db: Session):
     db.execute(delete(DocumentChunk))
     db.execute(delete(DocumentSection))
-    db.execute(delete(IndexJob))
-    db.execute(delete(DocumentFile))
+    db.execute(delete(IngestJob))
     db.execute(delete(DocRow))
     db.commit()
 
@@ -67,7 +66,7 @@ def wipe_docs(db: Session):
 def sync_index(monkeypatch):
     get_settings.cache_clear()
     settings = get_settings()
-    monkeypatch.setattr(settings, "index_sync_on_publish", True)
+    monkeypatch.setattr(settings, "ingest_sync_on_publish", True)
     yield
     get_settings.cache_clear()
 
@@ -106,14 +105,21 @@ def _submit_publish(client, doc_id: str) -> None:
 
 @pytest.mark.integration
 def test_f08_t01_upload_ooxml_trio(client_a):
-    doc_id = _create_doc(client_a)
-    _upload(client_a, doc_id, "a.docx", _docx_bytes("p"))
-    _upload(client_a, doc_id, "b.pptx", _pptx_bytes("s"))
-    _upload(client_a, doc_id, "c.xlsx", _xlsx_bytes("c"))
-    r = client_a.get(f"/v1/documents/{doc_id}", headers=HEADERS_A)
-    assert r.status_code == 200
-    names = {f["filename"] for f in r.json()["files"]}
-    assert names == {"a.docx", "b.pptx", "c.xlsx"}
+    """Each OOXML type uploads successfully (one file per document version)."""
+    cases = [
+        ("a.docx", _docx_bytes("p")),
+        ("b.pptx", _pptx_bytes("s")),
+        ("c.xlsx", _xlsx_bytes("c")),
+    ]
+    for name, data in cases:
+        doc_id = _create_doc(client_a)
+        _upload(client_a, doc_id, name, data)
+        r = client_a.get(f"/v1/documents/{doc_id}", headers=HEADERS_A)
+        assert r.status_code == 200
+        body = r.json()
+        assert body["file_name"] == name
+        assert body["file_storage_path"]
+        assert body["file_size_bytes"] > 0
 
 
 @pytest.mark.integration
@@ -156,7 +162,7 @@ def test_f08_t03_docx_index_search(client_a, db: Session, tmp_path):
 
     doc = db.get(DocRow, doc_id)
     assert doc is not None
-    assert doc.index_status == "ready"
+    assert doc.ingest_status == "ready"
 
     # Confirm route via re-parse log path: sections non-empty
     n = db.scalar(
@@ -181,7 +187,7 @@ def test_f08_t04_pptx_index_search(client_a, db: Session):
     _upload(client_a, doc_id, "m.pptx", _pptx_bytes(phrase))
     _submit_publish(client_a, doc_id)
     doc = db.get(DocRow, doc_id)
-    assert doc is not None and doc.index_status == "ready"
+    assert doc is not None and doc.ingest_status == "ready"
     searcher = PgKnowledgeSearcher(lambda: db, embedder=HashingEmbedder())
     hits = searcher.search(doc.tenant_id, phrase, top_k=5)
     assert any(phrase in (h.content or "") for h in hits)
@@ -194,7 +200,7 @@ def test_f08_t05_xlsx_index_search(client_a, db: Session):
     _upload(client_a, doc_id, "m.xlsx", _xlsx_bytes(phrase))
     _submit_publish(client_a, doc_id)
     doc = db.get(DocRow, doc_id)
-    assert doc is not None and doc.index_status == "ready"
+    assert doc is not None and doc.ingest_status == "ready"
     searcher = PgKnowledgeSearcher(lambda: db, embedder=HashingEmbedder())
     hits = searcher.search(doc.tenant_id, phrase, top_k=5)
     assert any(phrase in (h.content or "") for h in hits)
@@ -207,7 +213,7 @@ def test_f08_t06_empty_ooxml_zero_chunks(client_a, db: Session):
     _submit_publish(client_a, doc_id)
     doc = db.get(DocRow, doc_id)
     assert doc is not None
-    assert doc.index_status == "ready"
+    assert doc.ingest_status == "ready"
     chunks = db.scalars(
         select(DocumentChunk).where(
             DocumentChunk.doc_id == doc.doc_id,
@@ -236,7 +242,7 @@ def test_f08_t07_corrupt_ooxml_fails(client_a, db: Session, monkeypatch):
 
     get_settings.cache_clear()
     settings = get_settings()
-    monkeypatch.setattr(settings, "index_sync_on_publish", False)
+    monkeypatch.setattr(settings, "ingest_sync_on_publish", False)
 
     doc_id = _create_doc(client_a)
     _upload(client_a, doc_id, "bad.docx", data)
@@ -249,19 +255,19 @@ def test_f08_t07_corrupt_ooxml_fails(client_a, db: Session, monkeypatch):
     doc = db.get(DocRow, doc_id)
     assert doc is not None
     job = db.scalar(
-        select(IndexJob)
-        .where(IndexJob.doc_id == doc.doc_id)
-        .order_by(IndexJob.create_at.desc())
+        select(IngestJob)
+        .where(IngestJob.doc_id == doc.doc_id)
+        .order_by(IngestJob.create_at.desc())
     )
     assert job is not None
     from rag_api.services.storage_service import StorageService as SS
 
     with pytest.raises(Exception):
-        process_index_job(db, job.id, embedder=HashingEmbedder(), storage=SS())
+        process_ingest_job(db, job.id, embedder=HashingEmbedder(), storage=SS())
     db.refresh(job)
     db.refresh(doc)
     assert job.status == "failed"
-    assert doc.index_status == "failed"
+    assert doc.ingest_status == "failed"
     latest = db.scalars(
         select(DocumentChunk).where(
             DocumentChunk.doc_id == doc.doc_id,

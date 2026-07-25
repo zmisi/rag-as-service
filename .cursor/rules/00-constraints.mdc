@@ -49,7 +49,7 @@ alwaysApply: true
 1. **业务与数据权威在 `apps/api`（FastAPI）**：鉴权、租户、文档、会话、索引、RAG Agent、DB 访问均在此。
 2. **`apps/web`（Next.js）仅 UI**：页面与交互；浏览器只经同源 **`/backend/*`** 调 API（反代或本地 rewrite）。
 3. **禁止**在 Next Route Handler / Server Actions / RSC 中实现业务规则、直连数据库、调用 LLM/embedding（允许极薄的反代/BFF，不得承载用例逻辑）。
-4. **禁止**前端写死后端内网 `host:port` 作为权威入口；**禁止**把 RAG/索引 worker 放进 `apps/web`。
+4. **禁止**前端写死后端内网 `host:port` 作为权威入口；**禁止**把 RAG/摄入 worker 放进 `apps/web`。
 5. 未来 Web 以外的客户端（如桌面壳）应复用同一 FastAPI，不得为单端再复制一套业务后端。
 
 细节目录与反代见 [06-repo-layout.mdc](06-repo-layout.mdc)、[05-nextjs.mdc](05-nextjs.mdc)。
@@ -147,3 +147,15 @@ alwaysApply: true
 - Feature 是最小交付单位。
 - **唯一验收标准**：该 Feature Spec 中的 Test Cases 全部通过。
 - 无对应 Test Case 的行为，不算该 Phase 范围。
+
+## 10. 文档语言
+
+面向人阅读的 Markdown **必须使用中文**（标题、正文、列表、表格说明）：
+
+| 范围 | 示例 |
+|------|------|
+| Feature Spec | `docs/specs/**` |
+| OpenSpec 变更产物 | `openspec/changes/**` 的 `proposal.md` / `design.md` / `tasks.md` / delta `spec.md` |
+| 架构与运维说明 | `docs/**`、`deploy/*.md` |
+
+例外：代码标识符、API 路径、表/列名、环境变量、Test Case ID、文件路径保持英文（反引号包裹）。OpenSpec 生成侧同步见 [`openspec/config.yaml`](../../openspec/config.yaml) 的 `context` / `rules`。

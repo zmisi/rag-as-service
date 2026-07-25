@@ -3,7 +3,7 @@
 import { useRef } from "react";
 
 import { DocStatusStepper } from "@/components/admin/DocStatusStepper";
-import { IndexJobStatusCard } from "@/components/admin/IndexJobStatusCard";
+import { IngestJobStatusCard } from "@/components/admin/IngestJobStatusCard";
 import {
   TAG_OPTIONS,
   formatBytes,
@@ -11,7 +11,7 @@ import {
   tagLabel,
   type DocDetail,
   type DocTag,
-  type IndexJobStatus,
+  type IngestJobStatus,
 } from "@/lib/documents";
 
 type Props = {
@@ -20,14 +20,14 @@ type Props = {
   tag: string;
   validationErrors: string[];
   busy: boolean;
-  indexJob: IndexJobStatus | null;
+  ingestJob: IngestJobStatus | null;
   onTitleChange: (v: string) => void;
   onTagChange: (v: string) => void;
   onSave: () => void;
   onSubmitReview: () => void;
   onPublish: () => void;
   onNewVersion: () => void;
-  onUploadFiles: (files: FileList) => void;
+  onUploadFile: (file: File) => void;
 };
 
 export function DocEditor({
@@ -36,14 +36,14 @@ export function DocEditor({
   tag,
   validationErrors,
   busy,
-  indexJob,
+  ingestJob,
   onTitleChange,
   onTagChange,
   onSave,
   onSubmitReview,
   onPublish,
   onNewVersion,
-  onUploadFiles,
+  onUploadFile,
 }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const readOnly = doc?.status === "review" || doc?.status === "published";
@@ -68,9 +68,9 @@ export function DocEditor({
       `标题：${title.trim() || doc.title}`,
       `分类：${tag ? tagLabel(tag) : "—"}`,
       `版本：${formatVersionDisplay(doc.version)}`,
-      `文件：${doc.files.length} 个`,
+      `文件：${doc.file_name || "未上传"}`,
       "",
-      "发布后将建立知识库索引，供 AI 问答检索。",
+      "发布后将写入知识库（摄入），供 AI 问答检索。",
     ].join("\n");
     if (window.confirm(msg)) {
       onPublish();
@@ -122,12 +122,12 @@ export function DocEditor({
               <input
                 ref={fileRef}
                 type="file"
-                multiple
                 className="doc-file-input"
                 accept=".txt,.md,.pdf,.docx,.pptx,.xlsx"
                 onChange={(e) => {
-                  if (e.target.files?.length) {
-                    onUploadFiles(e.target.files);
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    onUploadFile(file);
                     e.target.value = "";
                   }
                 }}
@@ -138,24 +138,24 @@ export function DocEditor({
                 disabled={busy}
                 onClick={handleFilePick}
               >
-                选择文件
+                {doc.file_name ? "更换文件" : "选择文件"}
               </button>
               <p className="doc-hint">
-                支持 .txt / .md / .pdf / .docx / .pptx / .xlsx，单文件 ≤ 20MB（不支持旧版
-                .doc / .ppt / .xls）
+                每版本仅一个文件；再选将覆盖。支持 .txt / .md / .pdf / .docx / .pptx /
+                .xlsx，≤ 20MB（不支持旧版 .doc / .ppt / .xls）
               </p>
             </>
           ) : null}
-          <ul className="doc-file-list">
-            {doc.files.map((f) => (
-              <li key={f.id}>
-                <span>{f.filename}</span>
-                <span className="muted">
-                  {formatBytes(f.size_bytes)}
-                </span>
+          {doc.file_name ? (
+            <ul className="doc-file-list">
+              <li>
+                <span>{doc.file_name}</span>
+                <span className="muted">{formatBytes(doc.file_size_bytes ?? 0)}</span>
               </li>
-            ))}
-          </ul>
+            </ul>
+          ) : (
+            <p className="doc-hint muted">尚未上传文件</p>
+          )}
         </div>
 
         {validationErrors.length > 0 ? (
@@ -214,8 +214,8 @@ export function DocEditor({
         当前版本：{formatVersionDisplay(doc.version)}
       </p>
 
-      <IndexJobStatusCard
-        job={indexJob}
+      <IngestJobStatusCard
+        job={ingestJob}
         published={doc.status === "published"}
       />
     </div>
