@@ -18,6 +18,8 @@ from rag_api.services import conversations as conv_svc
 
 @dataclass
 class TurnResult:
+    """Persisted user/assistant messages plus agent_run and loop diagnostics."""
+
     user: Message
     assistant: Message
     agent_run: AgentRun

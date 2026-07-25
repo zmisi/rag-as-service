@@ -22,6 +22,7 @@ def _handle_signal(signum: int, _frame: object) -> None:
 
 
 def run_forever() -> None:
+    """Poll and process ingest jobs until SIGINT/SIGTERM; logs and keeps looping on errors."""
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
@@ -58,6 +59,7 @@ def run_forever() -> None:
 
 
 def run() -> None:
+    """CLI entrypoint; delegates to ``run_forever``."""
     run_forever()
 
 

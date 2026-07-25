@@ -28,6 +28,8 @@ timing_log = logging.getLogger("rag_api.timing")
 
 @dataclass
 class LoopStepRecord:
+    """One Agent Loop step persisted to ``agent_run_step``."""
+
     step_type: str
     tool_name: str | None = None
     payload: dict[str, Any] = field(default_factory=dict)
@@ -35,6 +37,8 @@ class LoopStepRecord:
 
 @dataclass
 class LoopResult:
+    """Outcome of a single Agent Loop run (reply, status, search usage, steps)."""
+
     reply: str
     status: str  # completed | truncated | error
     used_search: bool
@@ -44,6 +48,8 @@ class LoopResult:
 
 
 class AgentLoop:
+    """Model-driven ReAct loop: LLM tool calls with tenant-locked search."""
+
     def __init__(
         self,
         *,
@@ -55,6 +61,7 @@ class AgentLoop:
         self._tools = ToolExecutor(searcher, tenant_id)
 
     def run(self, *, history: list[Message], user_content: str) -> LoopResult:
+        """Execute up to MAX_STEPS; may force search when model claims no-hit prematurely."""
         steps: list[LoopStepRecord] = []
         used_search = False
         pending_tools: list[dict[str, Any]] = []

@@ -41,6 +41,7 @@ def build_upload_metadata(
     size_bytes: int,
     uploaded_at: str | None = None,
 ) -> dict[str, Any]:
+    """Build schema_version=1 metadata from HTTP upload provenance."""
     return {
         "schema_version": SCHEMA_VERSION,
         "upload": _omit_empty(
@@ -60,6 +61,7 @@ def merge_file_metadata(
     upload: dict[str, Any] | None = None,
     document: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """Merge upload/document slices into existing metadata; omit empty values."""
     base: dict[str, Any] = dict(existing or {})
     base["schema_version"] = SCHEMA_VERSION
     if upload is not None:
@@ -75,6 +77,7 @@ def merge_file_metadata(
 
 
 def parse_iso_to_naive_utc(value: str | None) -> datetime | None:
+    """Parse ISO-8601 (Z suffix ok) to naive UTC; return None on invalid input."""
     if not value or not isinstance(value, str):
         return None
     s = value.strip()

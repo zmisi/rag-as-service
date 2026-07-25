@@ -12,3 +12,4 @@ alwaysApply: false
 4. 内部检索 / 索引任务与对外 HTTP 分离；不暴露 Phase 2 的 `{subdomain}.lxzxai.com/api` 网关。
 5. QWen / embedding 客户端集中封装；LLM 超时 60s（F06）；可测处通过依赖注入 mock。
 6. 密码哈希与会话签发集中在 auth 模块；禁止在路由里散落复制安全逻辑。
+7. public 服务 / repository / domain / ingestion / agent / clients：**定义处 docstring 硬规则**（见 [09-python-docstrings.mdc](09-python-docstrings.mdc)）；禁止仅在调用处写「函数干什么」。

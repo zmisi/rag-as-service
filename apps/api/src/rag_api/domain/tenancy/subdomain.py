@@ -18,6 +18,7 @@ _SUBDOMAIN_PATTERN = _TENANT_NAME_PATTERN
 
 
 def normalize_tenant_name(raw: str) -> str:
+    """Trim whitespace and lowercase a raw tenant name before validation."""
     return raw.strip().lower()
 
 

@@ -4,6 +4,7 @@ from rag_api.config import Settings
 
 
 def cookie_max_age_seconds(settings: Settings) -> int:
+    """Return session cookie ``max_age`` in seconds from configured TTL."""
     return settings.session_ttl_days * 24 * 60 * 60
 
 
@@ -13,6 +14,7 @@ def apply_session_cookie(
     token: str,
     settings: Settings,
 ) -> None:
+    """Set the session cookie on ``response`` with configured security attributes."""
     kwargs: dict = {
         "key": settings.session_cookie_name,
         "value": token,
@@ -28,6 +30,7 @@ def apply_session_cookie(
 
 
 def clear_session_cookie(response: Response, *, settings: Settings) -> None:
+    """Remove the session cookie from ``response``, including domain scope when set."""
     if settings.session_cookie_domain:
         response.delete_cookie(
             key=settings.session_cookie_name,

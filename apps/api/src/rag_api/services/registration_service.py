@@ -34,6 +34,8 @@ def derive_user_name(email: str, explicit: str | None = None) -> str:
 
 @dataclass(frozen=True, slots=True)
 class RegistrationOutcome:
+    """Successful registration with session material and admin redirect URL."""
+
     tenant_name: str
     session: SessionIssueResult
     redirect_url: str
@@ -45,6 +47,8 @@ class RegistrationOutcome:
 
 
 class RegistrationService:
+    """Register owner account, tenant, and initial session."""
+
     def __init__(
         self,
         db_session: Session,
@@ -66,6 +70,7 @@ class RegistrationService:
         subdomain: str | None = None,
         user_name: str | None = None,
     ) -> RegistrationOutcome:
+        """Create user, tenant, and membership; map uniqueness conflicts to errors."""
         raw_tenant = tenant_name if tenant_name is not None else subdomain
         if raw_tenant is None:
             raise RegistrationError("invalid_format", "tenant_name is required", 400)

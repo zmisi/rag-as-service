@@ -64,6 +64,7 @@ def create_conversation(
     user_id: UUID,
     title: str | None,
 ) -> Conversation:
+    """Create an active conversation for the user within the tenant."""
     conv = Conversation(
         tenant_id=tenant_id,
         user_id=user_id,
@@ -109,6 +110,7 @@ def list_conversations(
     user_id: UUID,
     status: str,
 ) -> list[Conversation]:
+    """List non-deleted conversations for the user filtered by status."""
     if status not in ("active", "archived"):
         raise HTTPException(status_code=422, detail="Invalid status")
     stmt = (
@@ -131,6 +133,7 @@ def get_owned_conversation(
     tenant_id: UUID,
     user_id: UUID,
 ) -> Conversation:
+    """Load a user-owned conversation in the tenant; 404 if missing."""
     conv = db.scalar(
         select(Conversation).where(
             Conversation.id == conversation_id,
@@ -151,6 +154,7 @@ def archive_conversation(
     tenant_id: UUID,
     user_id: UUID,
 ) -> Conversation:
+    """Mark an active conversation archived; 409 if not active."""
     conv = get_owned_conversation(
         db, conversation_id=conversation_id, tenant_id=tenant_id, user_id=user_id
     )
@@ -169,6 +173,7 @@ def unarchive_conversation(
     tenant_id: UUID,
     user_id: UUID,
 ) -> Conversation:
+    """Restore an archived conversation to active; 409 if not archived."""
     conv = get_owned_conversation(
         db, conversation_id=conversation_id, tenant_id=tenant_id, user_id=user_id
     )
@@ -187,6 +192,7 @@ def soft_delete_conversation(
     tenant_id: UUID,
     user_id: UUID,
 ) -> None:
+    """Set ``deleted_at`` on an owned conversation."""
     conv = get_owned_conversation(
         db, conversation_id=conversation_id, tenant_id=tenant_id, user_id=user_id
     )
@@ -202,6 +208,7 @@ def rename_conversation(
     user_id: UUID,
     title: str,
 ) -> Conversation:
+    """Update conversation title; 422 if title is empty after trim."""
     conv = get_owned_conversation(
         db, conversation_id=conversation_id, tenant_id=tenant_id, user_id=user_id
     )
@@ -221,6 +228,7 @@ def list_messages(
     tenant_id: UUID,
     user_id: UUID,
 ) -> list[Message]:
+    """List messages in an owned conversation ordered by ``create_at``."""
     get_owned_conversation(
         db, conversation_id=conversation_id, tenant_id=tenant_id, user_id=user_id
     )
@@ -245,6 +253,7 @@ def add_message(
     content: str,
     meta: dict | None,
 ) -> Message:
+    """Append a message to an active conversation; 409 if archived."""
     conv = get_owned_conversation(
         db, conversation_id=conversation_id, tenant_id=tenant_id, user_id=user_id
     )

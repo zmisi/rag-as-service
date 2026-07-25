@@ -8,6 +8,7 @@ from rag_api.db.engine import get_engine
 
 @lru_cache
 def get_session_factory() -> sessionmaker[Session]:
+    """Return a cached session factory bound to the shared engine."""
     return sessionmaker(
         bind=get_engine(),
         autocommit=False,
@@ -17,6 +18,7 @@ def get_session_factory() -> sessionmaker[Session]:
 
 
 def get_db() -> Generator[Session, None, None]:
+    """Yield a SQLAlchemy session and ensure it is closed afterward."""
     session = get_session_factory()()
     try:
         yield session

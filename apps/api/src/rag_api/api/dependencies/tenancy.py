@@ -8,6 +8,7 @@ def require_apex_host(
     request: Request,
     settings: Settings = Depends(get_settings),
 ) -> None:
+    """Reject requests whose resolved Host is not the configured apex domain."""
     host_header = resolve_public_host(
         request,
         host=request.headers.get("host"),

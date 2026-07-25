@@ -18,6 +18,8 @@ _OPAQUE_CREDENTIALS = "邮箱或密码错误"
 
 @dataclass(frozen=True, slots=True)
 class LoginOutcome:
+    """Successful login with session material and tenant portal redirect URL."""
+
     tenant_name: str
     session: SessionIssueResult
     redirect_url: str
@@ -29,6 +31,8 @@ class LoginOutcome:
 
 
 class LoginService:
+    """Authenticate credentials and issue a tenant-scoped session."""
+
     def __init__(
         self,
         db_session: Session,
@@ -41,6 +45,10 @@ class LoginService:
         self._sessions = SessionService(db_session, self._settings)
 
     def login(self, email: str, password: str) -> LoginOutcome:
+        """Verify password, resolve primary tenant, and issue session cookie data.
+
+        Raises ``LoginError`` with opaque messaging on invalid credentials.
+        """
         normalized_email = normalize_email(email)
         user = self._users.find_by_email(normalized_email)
         if (

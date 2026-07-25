@@ -30,6 +30,8 @@ from rag_api.services.storage_service import StorageService
 
 @dataclass(frozen=True)
 class PublishResult:
+    """Published document plus optional duplicate-content warning fields."""
+
     document: Document
     warning_code: str | None = None
     warning: str | None = None
@@ -59,6 +61,7 @@ def create_document(
     tenant_id: UUID,
     user_id: UUID,
 ) -> Document:
+    """Create an empty draft document v1 in a new ``doc_group``."""
     group_id = uuid4()
     doc = Document(
         tenant_id=tenant_id,
@@ -82,6 +85,7 @@ def list_documents(
     tenant_id: UUID,
     tag: str | None = None,
 ) -> list[Document]:
+    """List latest non-deleted documents for the tenant, optionally by tag."""
     stmt = (
         select(Document)
         .where(
@@ -104,6 +108,7 @@ def get_document_detail(
     document_id: UUID,
     tenant_id: UUID,
 ) -> Document:
+    """Load a tenant document by id; 404 if missing or soft-deleted."""
     return _get_document(db, document_id=document_id, tenant_id=tenant_id)
 
 
@@ -115,6 +120,7 @@ def save_draft(
     title: str | None = None,
     tag: str | None = None,
 ) -> Document:
+    """Update draft/review title and tag; rejects published documents."""
     doc = _get_document(db, document_id=document_id, tenant_id=tenant_id)
     if doc.publish_status == "published":
         raise HTTPException(status_code=409, detail="Published document is read-only")
@@ -192,6 +198,7 @@ def submit_for_review(
     document_id: UUID,
     tenant_id: UUID,
 ) -> Document:
+    """Validate draft fields and move document to review status."""
     doc = _get_document(db, document_id=document_id, tenant_id=tenant_id)
     if doc.publish_status != "draft":
         raise HTTPException(status_code=409, detail="Only draft documents can be submitted")
@@ -257,6 +264,7 @@ def publish_document(
     document_id: UUID,
     tenant_id: UUID,
 ) -> PublishResult:
+    """Publish a review document, enqueue ingest, and optionally run sync ingest."""
     doc = _get_document(db, document_id=document_id, tenant_id=tenant_id)
     if doc.publish_status != "review":
         raise HTTPException(status_code=409, detail="Only review documents can be published")
@@ -359,6 +367,7 @@ def latest_ingest_job(
     document_id: UUID,
     tenant_id: UUID,
 ) -> IngestJob | None:
+    """Return the most recent ingest job for the document in the tenant."""
     _get_document(db, document_id=document_id, tenant_id=tenant_id)
     return db.scalar(
         select(IngestJob)
@@ -377,6 +386,7 @@ def soft_delete_document(
     document_id: UUID,
     tenant_id: UUID,
 ) -> Document:
+    """Soft-delete all versions in the doc group and demote index rows."""
     from datetime import datetime, timezone
 
     doc = _get_document(db, document_id=document_id, tenant_id=tenant_id)

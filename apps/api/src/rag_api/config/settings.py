@@ -25,6 +25,8 @@ def _env_files() -> tuple[Path, ...] | None:
 
 
 class Settings(BaseSettings):
+    """Application configuration loaded from environment variables and ``.env`` files."""
+
     model_config = SettingsConfigDict(
         env_file=_env_files(),
         env_file_encoding="utf-8",
@@ -131,4 +133,5 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
+    """Return cached application settings."""
     return Settings()

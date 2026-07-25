@@ -8,10 +8,13 @@ from sqlalchemy.orm import Session
 
 
 class TenantRepository:
+    """Persistence for tenant rows."""
+
     def __init__(self, session: Session) -> None:
         self._session = session
 
     def find_by_tenant_name(self, tenant_name: str) -> Tenant | None:
+        """Find tenant by global ``tenant_name`` (subdomain), or None."""
         stmt = select(Tenant).where(Tenant.tenant_name == tenant_name)
         return self._session.scalar(stmt)
 
@@ -25,6 +28,7 @@ class TenantRepository:
         status: str = TENANT_STATUS_ACTIVE,
         charge_mode: str = CHARGE_MODE_FREE,
     ) -> Tenant:
+        """Insert a new tenant with default active/free billing."""
         tenant = Tenant(
             tenant_name=tenant_name,
             status=status,

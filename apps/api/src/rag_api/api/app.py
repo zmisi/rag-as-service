@@ -6,6 +6,7 @@ from rag_api.config import get_settings
 
 
 def create_app(lifespan=None) -> FastAPI:
+    """Build the FastAPI application with routers and health endpoints."""
     settings = get_settings()
     app = FastAPI(
         title="rag-as-service API",

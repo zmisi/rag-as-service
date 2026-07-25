@@ -265,6 +265,7 @@ def _cell_display(value: object) -> str:
 
 
 def docx_to_markdown(data: bytes) -> str:
+    """Convert a .docx byte payload to Markdown (headings, paragraphs, tables)."""
     try:
         from docx import Document
         from docx.table import Table
@@ -318,6 +319,7 @@ def docx_to_markdown(data: bytes) -> str:
 
 
 def pptx_to_markdown(data: bytes) -> str:
+    """Convert a .pptx byte payload to Markdown (one section per slide)."""
     try:
         from pptx import Presentation
     except ImportError as exc:
@@ -369,6 +371,7 @@ def pptx_to_markdown(data: bytes) -> str:
 
 
 def xlsx_to_markdown(data: bytes) -> str:
+    """Convert a .xlsx byte payload to Markdown (sheet headings and tables)."""
     try:
         from openpyxl import load_workbook
     except ImportError as exc:
@@ -405,6 +408,7 @@ def xlsx_to_markdown(data: bytes) -> str:
 
 
 def office_to_markdown(filename: str, data: bytes) -> str:
+    """Dispatch OOXML (.docx/.pptx/.xlsx) to the matching lightweight converter."""
     suffix = Path(filename).suffix.lower()
     if suffix == ".docx":
         return docx_to_markdown(data)

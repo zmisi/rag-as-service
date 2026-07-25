@@ -11,6 +11,8 @@ from sqlalchemy.orm import Session
 
 
 class TenantMemberRepository:
+    """Persistence for tenant membership rows."""
+
     def __init__(self, session: Session) -> None:
         self._session = session
 
@@ -23,6 +25,7 @@ class TenantMemberRepository:
         *,
         active: int = MEMBER_ACTIVE,
     ) -> TenantMember:
+        """Insert a tenant membership and return the flushed row."""
         member = TenantMember(
             tenant_id=tenant_id,
             user_id=user_id,

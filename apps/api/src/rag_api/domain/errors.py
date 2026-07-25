@@ -12,12 +12,12 @@ class DomainValidationError(Exception):
 
 
 class SubdomainValidationError(DomainValidationError):
-    pass
+    """Tenant subdomain (``tenant_name``) failed format or reserved-name checks."""
 
 
 class EmailValidationError(DomainValidationError):
-    pass
+    """Email address failed domain validation rules."""
 
 
 class PasswordValidationError(DomainValidationError):
-    pass
+    """Password failed domain validation rules."""

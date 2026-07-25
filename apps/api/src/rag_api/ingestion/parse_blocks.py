@@ -21,6 +21,7 @@ class ParseBlock:
 
 
 def blocks_to_markdown(blocks: list[ParseBlock]) -> str:
+    """Render structured parse blocks back to Markdown text."""
     parts: list[str] = []
     for b in blocks:
         if b.kind == "heading":
@@ -110,6 +111,7 @@ def markdown_to_blocks(markdown: str) -> list[ParseBlock]:
 
 
 def count_block_kinds(blocks: list[ParseBlock]) -> dict[str, int]:
+    """Count blocks by kind (heading, paragraph, table, image)."""
     out = {"heading": 0, "paragraph": 0, "table": 0, "image": 0}
     for b in blocks:
         if b.kind in out:

@@ -15,6 +15,7 @@ _MAX_REPLY_SNIP = 1200
 
 
 def snip(text: str | None, limit: int = _DEFAULT_SNIP) -> str:
+    """Truncate text for logs, escaping newlines and appending an overflow suffix."""
     raw = (text or "").replace("\n", "\\n")
     if len(raw) <= limit:
         return raw
@@ -22,6 +23,7 @@ def snip(text: str | None, limit: int = _DEFAULT_SNIP) -> str:
 
 
 def role_counts(messages: list[dict[str, Any]]) -> str:
+    """Summarize message roles as a compact ``role:count`` comma-separated string."""
     counts: dict[str, int] = {}
     for m in messages:
         role = str(m.get("role") or "?")
@@ -30,6 +32,7 @@ def role_counts(messages: list[dict[str, Any]]) -> str:
 
 
 def summarize_messages(messages: list[dict[str, Any]], *, limit_each: int = _MAX_MSG_SNIP) -> str:
+    """Format chat messages into multi-line debug output with snipped content."""
     lines: list[str] = []
     for i, m in enumerate(messages):
         role = m.get("role")
@@ -48,6 +51,7 @@ def summarize_messages(messages: list[dict[str, Any]], *, limit_each: int = _MAX
 
 
 def dump_json(obj: Any, limit: int = 2000) -> str:
+    """Serialize ``obj`` to JSON for logs, truncating when output exceeds ``limit``."""
     try:
         text = json.dumps(obj, ensure_ascii=False, default=str)
     except TypeError:
@@ -65,6 +69,7 @@ def log_llm_request(
     messages: list[dict[str, Any]],
     tools: list[dict[str, Any]] | None,
 ) -> None:
+    """Log LLM request metadata and a summarized view of outbound messages."""
     tool_names = []
     for t in tools or []:
         fn = (t.get("function") or {}) if isinstance(t, dict) else {}
@@ -94,6 +99,7 @@ def log_llm_response(
     usage: dict[str, Any] | None,
     finish_reason: str | None = None,
 ) -> None:
+    """Log LLM response timing, token usage, content preview, and tool calls."""
     tc_bits = []
     for tc in tool_calls:
         name = getattr(tc, "name", None) or (tc.get("name") if isinstance(tc, dict) else "?")
@@ -122,10 +128,12 @@ def log_llm_response(
 
 
 def log_agent(event: str, **fields: Any) -> None:
+    """Emit a structured ``agent.<event>`` info log with non-null keyword fields."""
     logger.info("agent.%s %s", event, " ".join(f"{k}={v}" for k, v in fields.items() if v is not None))
 
 
 def log_system_call(system: str, action: str, **fields: Any) -> None:
+    """Emit a structured cross-system call log for external integrations."""
     logger.info(
         "system.%s action=%s %s",
         system,
