@@ -213,7 +213,9 @@ def process_ingest_job(
             raise ParseError("no files attached")
 
         raw = storage.read_bytes(doc.file_storage_path)
-        fname = (doc.file_name or "").strip() or "upload.bin"
+        fname = (doc.file_name or "").strip()
+        if not fname:
+            raise ParseError("document file_name is required")
         doc_props = extract_document_properties(fname, raw)
         if doc_props:
             doc.file_metadata = merge_file_metadata(

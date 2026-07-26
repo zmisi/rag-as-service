@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
 from rag_api.api.dependencies import AuthContext, require_tenant_member
@@ -103,7 +103,12 @@ async def upload_file(
     storage: StorageService = Depends(_storage),
 ) -> DocumentDetailOut:
     data = await file.read()
-    filename = file.filename or "upload.bin"
+    filename = (file.filename or "").strip()
+    if not filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="filename is required",
+        )
     doc_svc.add_file(
         db,
         storage,
