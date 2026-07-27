@@ -54,6 +54,8 @@ export function DocSidebar({
       </div>
       <p className="sidebar-widget-link">
         <a href="/admin/widget">Embed Widget</a>
+        {" · "}
+        <a href="/admin/debug">Debug</a>
       </p>
 
       <input
