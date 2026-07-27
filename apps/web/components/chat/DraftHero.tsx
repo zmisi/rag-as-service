@@ -26,9 +26,6 @@ export function DraftHero() {
         height={56}
       />
       <h2 className="draft-hero-greeting">{greeting}</h2>
-      <p className="draft-hero-tagline">
-        I&apos;m lxzxai, your knowledge assistant.
-      </p>
     </div>
   );
 }

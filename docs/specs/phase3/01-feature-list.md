@@ -9,7 +9,7 @@ ID 格式：`P3-F{nn}`。
 | P3-F01 | 生产上线与主 Flow | `draft` | `lxzxai.com` / `*.lxzxai.com` | P1 + P2 主路径 | [P3-F01-production-launch.md](features/P3-F01-production-launch.md) |
 | P3-F02 | 索引质量增强 | `draft` | 后台 / 摄入 | P1-F04, P2-F01 | [P3-F02-index-quality.md](features/P3-F02-index-quality.md) |
 | P3-F03 | Portal 搜索 Cursor 风 | `draft` | `{tenant}.lxzxai.com` | P2-F07, P1-F06, P3-F02 | [P3-F03-portal-cursor-search.md](features/P3-F03-portal-cursor-search.md) |
-| P3-F04 | Debug Page（检索 / Agent 透视） | `approved` | `{tenant}.lxzxai.com/admin/debug` | P1-F04, P1-F06, P2-F07 | [P3-F04-debug-page.md](features/P3-F04-debug-page.md) |
+| P3-F04 | Debug Page（检索 / Agent 透视） | `done` | `{tenant}.lxzxai.com/admin/debug` | P1-F04, P1-F06, P2-F07 | [P3-F04-debug-page.md](features/P3-F04-debug-page.md) |
 
 ```mermaid
 flowchart LR
