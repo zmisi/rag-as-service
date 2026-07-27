@@ -1,0 +1,38 @@
+meta {
+  name: 05 Public Chat
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/v1/chat
+  body: json
+  auth: none
+}
+
+headers {
+  Host: {{tenantSubdomain}}.lxzxai.com
+  Accept: application/json
+  Content-Type: application/json
+  Authorization: Bearer {{apiKeySecret}}
+}
+
+body:json {
+  {
+    "message": "哪些专业色弱不能报？",
+    "conversation_id": null
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body && body.conversation_id) {
+    bru.setEnvVar('conversationId', body.conversation_id);
+  }
+}
+
+docs {
+  # 05 Public Chat
+  期望：**200**，含 `conversation_id`、`message`、`used_search`（F11-T03）。
+  多轮时把 body 里的 `conversation_id` 换成环境变量 `{{conversationId}}`。
+}

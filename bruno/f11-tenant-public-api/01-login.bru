@@ -1,0 +1,43 @@
+meta {
+  name: 01 Login (apex)
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/v1/auth/login
+  body: json
+  auth: none
+}
+
+headers {
+  Host: {{apexHost}}
+  Accept: application/json
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "email": "{{email}}",
+    "password": "{{password}}"
+  }
+}
+
+script:post-response {
+  const setCookie = res.getHeader('set-cookie');
+  const raw = Array.isArray(setCookie) ? setCookie.join(';') : (setCookie || '');
+  const m = /pb_session=([^;]+)/.exec(raw);
+  if (m) {
+    bru.setEnvVar('sessionToken', m[1]);
+    console.log('sessionToken saved');
+  } else {
+    console.log('No pb_session in Set-Cookie:', raw);
+  }
+}
+
+docs {
+  # 01 Login
+  在主站 Host（`lxzxai.com`）登录，从 `Set-Cookie` 提取 `pb_session` 写入环境变量 `sessionToken`。
+  
+  先改 `environments/local.bru` 里的 `email` / `password` / `tenantSubdomain`。
+}

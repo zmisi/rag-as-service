@@ -1,5 +1,6 @@
 from rag_api.db.models.agent_run import AgentRun
 from rag_api.db.models.agent_run_step import AgentRunStep
+from rag_api.db.models.api_key import ApiKey
 from rag_api.db.models.conversation import Conversation
 from rag_api.db.models.document import Document
 from rag_api.db.models.document_chunk import DocumentChunk
@@ -17,6 +18,7 @@ __all__ = [
     "ROLE_OWNER",
     "AgentRun",
     "AgentRunStep",
+    "ApiKey",
     "Conversation",
     "Document",
     "DocumentChunk",

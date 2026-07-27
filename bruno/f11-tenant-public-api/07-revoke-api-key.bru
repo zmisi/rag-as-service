@@ -1,0 +1,22 @@
+meta {
+  name: 07 Revoke API Key
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/v1/admin/api-keys/{{apiKeyId}}/revoke
+  body: none
+  auth: none
+}
+
+headers {
+  Host: {{tenantSubdomain}}.lxzxai.com
+  Accept: application/json
+  Cookie: pb_session={{sessionToken}}
+}
+
+docs {
+  # 07 Revoke
+  期望：**200**，`status=revoked`。之后再跑 04/05 → **401**（F11-T06）。
+}

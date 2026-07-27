@@ -28,6 +28,10 @@ class Conversation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey(f"{RAG_SCHEMA}.widget_site_keys.id", ondelete="CASCADE"),
         nullable=True,
     )
+    api_key_id: Mapped[Optional[UUID]] = mapped_column(
+        ForeignKey(f"{RAG_SCHEMA}.api_keys.id", ondelete="CASCADE"),
+        nullable=True,
+    )
     title: Mapped[str] = mapped_column(Text, nullable=False, default="新会话")
     status: Mapped[str] = mapped_column(Text, nullable=False, default="active")
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

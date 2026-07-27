@@ -1,0 +1,22 @@
+meta {
+  name: 03 List API Keys
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/v1/admin/api-keys
+  body: none
+  auth: none
+}
+
+headers {
+  Host: {{tenantSubdomain}}.lxzxai.com
+  Accept: application/json
+  Cookie: pb_session={{sessionToken}}
+}
+
+docs {
+  # 03 List API Keys
+  期望：**200**；元素含 `key_prefix`，**无** `secret` / `key_hash`（F11-T08）。
+}

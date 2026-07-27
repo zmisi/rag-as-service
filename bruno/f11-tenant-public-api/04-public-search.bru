@@ -1,0 +1,32 @@
+meta {
+  name: 04 Public Search
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/v1/search
+  body: json
+  auth: none
+}
+
+headers {
+  Host: {{tenantSubdomain}}.lxzxai.com
+  Accept: application/json
+  Content-Type: application/json
+  Authorization: Bearer {{apiKeySecret}}
+}
+
+body:json {
+  {
+    "query": "哪些专业色弱不能报？",
+    "top_k": 5
+  }
+}
+
+docs {
+  # 04 Public Search
+  Bearer `rk_live_` + 租户 Host。期望：**200**，`hits[]` 含 `content` / `path`（F11-T02）。
+  
+  无/错 Key → **401** `error.code=unauthorized`。
+}

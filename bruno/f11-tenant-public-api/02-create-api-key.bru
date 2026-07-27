@@ -1,0 +1,40 @@
+meta {
+  name: 02 Create API Key
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/v1/admin/api-keys
+  body: json
+  auth: none
+}
+
+headers {
+  Host: {{tenantSubdomain}}.lxzxai.com
+  Accept: application/json
+  Content-Type: application/json
+  Cookie: pb_session={{sessionToken}}
+}
+
+body:json {
+  {
+    "name": "bruno-dev"
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body && body.secret) {
+    bru.setEnvVar('apiKeySecret', body.secret);
+    bru.setEnvVar('apiKeyId', body.id);
+    console.log('apiKeySecret saved (shown once):', body.secret);
+  }
+}
+
+docs {
+  # 02 Create API Key
+  成员 cookie + 租户 Host 创建 Key。明文 `secret` 只在本响应出现一次，自动写入 `apiKeySecret`。
+  
+  期望：**201**，`secret` 以 `rk_live_` 开头。
+}

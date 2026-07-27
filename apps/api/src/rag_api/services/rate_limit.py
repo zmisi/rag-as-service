@@ -1,4 +1,4 @@
-"""In-memory sliding-window rate limiter (F12: 30 req/min per site key)."""
+"""In-memory sliding-window rate limiter (F12: 30/min site key; F11: 60/min API key)."""
 
 from __future__ import annotations
 
@@ -32,5 +32,6 @@ class SlidingWindowRateLimiter:
             self._hits.clear()
 
 
-# Module singleton for process-local limiting (tests can call .reset()).
+# Module singletons for process-local limiting (tests can call .reset()).
 widget_site_key_limiter = SlidingWindowRateLimiter(limit=30, window_s=60.0)
+api_key_limiter = SlidingWindowRateLimiter(limit=60, window_s=60.0)

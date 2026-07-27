@@ -38,13 +38,18 @@ def run_user_turn(
     searcher: KnowledgeSearcher,
     user_id: UUID | None = None,
     site_key_id: UUID | None = None,
+    api_key_id: UUID | None = None,
 ) -> TurnResult:
     """Persist user message, run Agent Loop, persist assistant + traces.
 
-    Ownership: exactly one of ``user_id`` (Portal) or ``site_key_id`` (F12 Widget).
+    Ownership: exactly one of ``user_id`` (Portal), ``site_key_id`` (F12),
+    or ``api_key_id`` (F11 public API).
     """
-    if (user_id is None) == (site_key_id is None):
-        raise ValueError("run_user_turn requires exactly one of user_id or site_key_id")
+    owners = sum(x is not None for x in (user_id, site_key_id, api_key_id))
+    if owners != 1:
+        raise ValueError(
+            "run_user_turn requires exactly one of user_id, site_key_id, or api_key_id"
+        )
 
     timer = StageTimer(
         "turn",
@@ -58,6 +63,7 @@ def run_user_turn(
         tenant_id=str(tenant_id),
         user_id=str(user_id) if user_id else None,
         site_key_id=str(site_key_id) if site_key_id else None,
+        api_key_id=str(api_key_id) if api_key_id else None,
         content=snip(content, 200),
     )
 
@@ -68,6 +74,7 @@ def run_user_turn(
         tenant_id=tenant_id,
         user_id=user_id,
         site_key_id=site_key_id,
+        api_key_id=api_key_id,
         role="user",
         content=content,
         meta=None,
@@ -78,6 +85,7 @@ def run_user_turn(
         tenant_id=tenant_id,
         user_id=user_id,
         site_key_id=site_key_id,
+        api_key_id=api_key_id,
         user_content=content,
     )
     timer.mark("persist_user")
@@ -101,6 +109,7 @@ def run_user_turn(
         tenant_id=tenant_id,
         user_id=user_id,
         site_key_id=site_key_id,
+        api_key_id=api_key_id,
     )
     timer.mark("load_history", history_count=len(history))
 

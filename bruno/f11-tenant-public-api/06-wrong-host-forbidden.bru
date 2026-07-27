@@ -1,0 +1,30 @@
+meta {
+  name: 06 Wrong Host Forbidden
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/api/v1/search
+  body: json
+  auth: none
+}
+
+headers {
+  Host: other-tenant.lxzxai.com
+  Accept: application/json
+  Content-Type: application/json
+  Authorization: Bearer {{apiKeySecret}}
+}
+
+body:json {
+  {
+    "query": "anything"
+  }
+}
+
+docs {
+  # 06 Cross-tenant Host
+  用 **A 租户的 Key** + **B 租户 Host**。若 `other-tenant` 存在于 DB：期望 **403** `forbidden`（F11-T05）。
+  若 Host 未知租户：可能是 **404**（未知 subdomain）。请改成你库里真实存在的另一个 `tenant_name`。
+}

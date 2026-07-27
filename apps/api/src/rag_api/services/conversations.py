@@ -1,4 +1,4 @@
-"""Conversation / message business rules (F05)."""
+"""Conversation / message business rules (F05 / F12 / F11)."""
 
 from __future__ import annotations
 
@@ -13,6 +13,28 @@ from rag_api.db.models import Conversation, Message
 
 DEFAULT_TITLE = "新会话"
 AUTO_TITLE_MAX_LEN = 60
+
+
+def _owner_count(
+    user_id: UUID | None,
+    site_key_id: UUID | None,
+    api_key_id: UUID | None,
+) -> int:
+    return sum(x is not None for x in (user_id, site_key_id, api_key_id))
+
+
+def _require_exactly_one_owner(
+    user_id: UUID | None,
+    site_key_id: UUID | None,
+    api_key_id: UUID | None,
+) -> None:
+    if _owner_count(user_id, site_key_id, api_key_id) != 1:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Ownership requires exactly one of user_id, site_key_id, or api_key_id"
+            ),
+        )
 
 
 def derive_title_from_message(content: str, max_len: int = AUTO_TITLE_MAX_LEN) -> str:
@@ -33,6 +55,7 @@ def maybe_set_title_from_first_message(
     tenant_id: UUID,
     user_id: UUID | None = None,
     site_key_id: UUID | None = None,
+    api_key_id: UUID | None = None,
     user_content: str,
 ) -> str | None:
     """When title is still default, set it from the first user message."""
@@ -42,6 +65,7 @@ def maybe_set_title_from_first_message(
         tenant_id=tenant_id,
         user_id=user_id,
         site_key_id=site_key_id,
+        api_key_id=api_key_id,
     )
     if conv.title != DEFAULT_TITLE:
         return None
@@ -68,17 +92,15 @@ def create_conversation(
     tenant_id: UUID,
     user_id: UUID | None = None,
     site_key_id: UUID | None = None,
+    api_key_id: UUID | None = None,
     title: str | None,
 ) -> Conversation:
-    if (user_id is None) == (site_key_id is None):
-        raise HTTPException(
-            status_code=500,
-            detail="Conversation requires exactly one of user_id or site_key_id",
-        )
+    _require_exactly_one_owner(user_id, site_key_id, api_key_id)
     conv = Conversation(
         tenant_id=tenant_id,
         user_id=user_id,
         site_key_id=site_key_id,
+        api_key_id=api_key_id,
         title=(title.strip() if title and title.strip() else DEFAULT_TITLE),
         status="active",
     )
@@ -143,12 +165,9 @@ def get_owned_conversation(
     tenant_id: UUID,
     user_id: UUID | None = None,
     site_key_id: UUID | None = None,
+    api_key_id: UUID | None = None,
 ) -> Conversation:
-    if (user_id is None) == (site_key_id is None):
-        raise HTTPException(
-            status_code=500,
-            detail="Ownership requires exactly one of user_id or site_key_id",
-        )
+    _require_exactly_one_owner(user_id, site_key_id, api_key_id)
     filters = [
         Conversation.id == conversation_id,
         Conversation.tenant_id == tenant_id,
@@ -156,8 +175,10 @@ def get_owned_conversation(
     ]
     if user_id is not None:
         filters.append(Conversation.user_id == user_id)
-    else:
+    elif site_key_id is not None:
         filters.append(Conversation.site_key_id == site_key_id)
+    else:
+        filters.append(Conversation.api_key_id == api_key_id)
     conv = db.scalar(select(Conversation).where(*filters))
     if conv is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -185,6 +206,32 @@ def resolve_conversation_for_widget_message(
         db,
         tenant_id=tenant_id,
         site_key_id=site_key_id,
+        title=derive_title_from_message(content),
+    )
+    return conv.id
+
+
+def resolve_conversation_for_api_key_message(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    api_key_id: UUID,
+    conversation_id: UUID | None,
+    content: str,
+) -> UUID:
+    """F11: use existing API-key conversation or create one for first send."""
+    if conversation_id is not None:
+        get_owned_conversation(
+            db,
+            conversation_id=conversation_id,
+            tenant_id=tenant_id,
+            api_key_id=api_key_id,
+        )
+        return conversation_id
+    conv = create_conversation(
+        db,
+        tenant_id=tenant_id,
+        api_key_id=api_key_id,
         title=derive_title_from_message(content),
     )
     return conv.id
@@ -267,6 +314,7 @@ def list_messages(
     tenant_id: UUID,
     user_id: UUID | None = None,
     site_key_id: UUID | None = None,
+    api_key_id: UUID | None = None,
 ) -> list[Message]:
     get_owned_conversation(
         db,
@@ -274,6 +322,7 @@ def list_messages(
         tenant_id=tenant_id,
         user_id=user_id,
         site_key_id=site_key_id,
+        api_key_id=api_key_id,
     )
     stmt = (
         select(Message)
@@ -293,6 +342,7 @@ def add_message(
     tenant_id: UUID,
     user_id: UUID | None = None,
     site_key_id: UUID | None = None,
+    api_key_id: UUID | None = None,
     role: str,
     content: str,
     meta: dict | None,
@@ -303,6 +353,7 @@ def add_message(
         tenant_id=tenant_id,
         user_id=user_id,
         site_key_id=site_key_id,
+        api_key_id=api_key_id,
     )
     if conv.status != "active":
         raise HTTPException(status_code=409, detail="Cannot add message to archived conversation")

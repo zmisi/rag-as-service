@@ -16,6 +16,7 @@ from rag_api.db.migrate import upgrade_head
 from rag_api.db.models import (
     AgentRun,
     AgentRunStep,
+    ApiKey,
     Conversation,
     Document,
     DocumentChunk,
@@ -166,6 +167,7 @@ def tenants(db: Session) -> dict:
     db.execute(
         delete(WidgetSiteKey).where(WidgetSiteKey.tenant_id.in_(test_tenant_ids))
     )
+    db.execute(delete(ApiKey).where(ApiKey.tenant_id.in_(test_tenant_ids)))
     db.execute(
         delete(FaqSuggestionStats).where(
             FaqSuggestionStats.tenant_id.in_(test_tenant_ids)
