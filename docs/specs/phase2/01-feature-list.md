@@ -5,28 +5,28 @@ Phase 索引见 [../01-phase-list.md](../01-phase-list.md)。
 
 | ID | 名称 | Status | 域名表面 | 依赖 | Spec |
 |----|------|--------|----------|------|------|
-| F08 | Office OOXML（docx/xlsx/pptx） | `done` | `/admin` + 索引 | F03, F04 | [F08-office-ooxml.md](features/F08-office-ooxml.md) |
-| F09 | Admin 文件夹树 | `draft` | `{subdomain}.lxzxai.com/admin` | F03 | [F09-admin-folder-tree.md](features/F09-admin-folder-tree.md) |
-| F10 | 文档预览 | `draft` | `{subdomain}.lxzxai.com/admin` | F03, F08 | [F10-doc-preview.md](features/F10-doc-preview.md) |
-| F11 | 租户对外 API | `done` | `{subdomain}.lxzxai.com/api` | F04, F06 | [F11-tenant-public-api.md](features/F11-tenant-public-api.md) |
-| F12 | Embed Widget | `done` | 客户站点嵌入 | F06（F11 `rk_live_` 延后） | [F12-embed-widget.md](features/F12-embed-widget.md) |
-| F13 | Portal FAQ 推荐 | `done` | `{subdomain}.lxzxai.com` | F03, F06 | [F13-portal-faq-suggestions.md](features/F13-portal-faq-suggestions.md) |
-| F14 | Portal 壳与延迟会话 | `done` | `{subdomain}.lxzxai.com` | F05, F06, F13 | [F14-portal-shell.md](features/F14-portal-shell.md) |
+| P2-F01 | Office OOXML（docx/xlsx/pptx） | `done` | `/admin` + 索引 | P1-F03, P1-F04 | [P2-F01-office-ooxml.md](features/P2-F01-office-ooxml.md) |
+| P2-F02 | Admin 文件夹树 | `draft` | `{subdomain}.lxzxai.com/admin` | P1-F03 | [P2-F02-admin-folder-tree.md](features/P2-F02-admin-folder-tree.md) |
+| P2-F03 | 文档预览 | `draft` | `{subdomain}.lxzxai.com/admin` | P1-F03, P2-F01 | [P2-F03-doc-preview.md](features/P2-F03-doc-preview.md) |
+| P2-F04 | 租户对外 API | `done` | `{subdomain}.lxzxai.com/api` | P1-F04, P1-F06 | [P2-F04-tenant-public-api.md](features/P2-F04-tenant-public-api.md) |
+| P2-F05 | Embed Widget | `done` | 客户站点嵌入 | P1-F06（P2-F04 `rk_live_` 延后） | [P2-F05-embed-widget.md](features/P2-F05-embed-widget.md) |
+| P2-F06 | Portal FAQ 推荐 | `done` | `{subdomain}.lxzxai.com` | P1-F03, P1-F06 | [P2-F06-portal-faq-suggestions.md](features/P2-F06-portal-faq-suggestions.md) |
+| P2-F07 | Portal 壳与延迟会话 | `done` | `{subdomain}.lxzxai.com` | P1-F05, P1-F06, P2-F06 | [P2-F07-portal-shell.md](features/P2-F07-portal-shell.md) |
 
 ```mermaid
 flowchart LR
-  F03[F03 DocAdmin] --> F08[F08 OfficeOOXML]
-  F04[F04 Indexing] --> F08
-  F03 --> F09[F09 FolderTree]
-  F03 --> F10[F10 Preview]
-  F08 --> F10
-  F06[F06 RagAgent] --> F11[F11 PublicAPI]
-  F04 --> F11
-  F06 --> F12[F12 Widget]
-  F11 -.->|rk_live_ deferred| F12
-  F06 --> F13[F13 PortalFAQ]
-  F03 --> F13
-  F05[F05 Conversations] --> F14[F14 PortalShell]
-  F06 --> F14
-  F13 --> F14
+  P1-F03[P1-F03 DocAdmin] --> P2-F01[P2-F01 OfficeOOXML]
+  P1-F04[P1-F04 Indexing] --> P2-F01
+  P1-F03 --> P2-F02[P2-F02 FolderTree]
+  P1-F03 --> P2-F03[P2-F03 Preview]
+  P2-F01 --> P2-F03
+  P1-F06[P1-F06 RagAgent] --> P2-F04[P2-F04 PublicAPI]
+  P1-F04 --> P2-F04
+  P1-F06 --> P2-F05[P2-F05 Widget]
+  P2-F04 -.->|rk_live_ deferred| P2-F05
+  P1-F06 --> P2-F06[P2-F06 PortalFAQ]
+  P1-F03 --> P2-F06
+  P1-F05[P1-F05 Conversations] --> P2-F07[P2-F07 PortalShell]
+  P1-F06 --> P2-F07
+  P2-F06 --> P2-F07
 ```

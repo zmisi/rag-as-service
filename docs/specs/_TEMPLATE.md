@@ -1,4 +1,4 @@
-# Fxx 标题
+# P{n}-Fxx 标题
 
 > 一句话：这个 Feature 交付什么。
 
@@ -9,6 +9,7 @@
 | **Approved by** | |
 | **Approved at** | |
 
+> **ID 格式**：`P{phase}-F{nn}-{slug}`（例：`P1-F01`、`P2-F01`、`P3-F01`）。Test Case ID：`P{n}-F{nn}-T01`。  
 > Status：`draft` → `review` → `approved` → `done`。未 `approved` 不得实现，见 [00-constraints.mdc](../../.cursor/rules/00-constraints.mdc) §8。
 
 ## 范围
@@ -46,4 +47,4 @@ flowchart TD
 
 | ID | 步骤 | 期望 | 类型 |
 |----|------|------|------|
-| Fxx-T01 | Given … When … | Then … | api |
+| P{n}-Fxx-T01 | Given … When … | Then … | api |

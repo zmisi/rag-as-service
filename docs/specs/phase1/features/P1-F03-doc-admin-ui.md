@@ -1,7 +1,7 @@
-# F03 文档管理 Admin UI
+# P1-F03 文档管理 Admin UI
 
 > `{subdomain}.lxzxai.com/admin` 租户文档管理工作台的信息架构、组件与交互设计。  
-> 业务规则与 API 验收以 [F03-doc-admin.md](F03-doc-admin.md) 为准；本文为 UI 补充 Spec。
+> 业务规则与 API 验收以 [P1-F03-doc-admin.md](P1-F03-doc-admin.md) 为准；本文为 UI 补充 Spec。
 
 
 | 字段 | 值 |
@@ -10,7 +10,7 @@
 | **Owner** | |
 | **Approved by** | team |
 | **Approved at** | 2026-07-21 |
-| **Depends on** | F02（会话鉴权）、[F03-doc-admin.md](F03-doc-admin.md)（文档状态机/API） |
+| **Depends on** | P1-F02（会话鉴权）、[P1-F03-doc-admin.md](P1-F03-doc-admin.md)（文档状态机/API） |
 
 ## 范围
 
@@ -18,14 +18,14 @@
 - 文档列表（Tag 过滤、搜索、新建）
 - 文档 Editor（状态机 Stepper、Save / Submit for Review / Publish）
 - 文件上传前端校验（类型、20MB）
-- 发布后索引状态只读反馈（F04 数据，不做解析 UI）
+- 发布后索引状态只读反馈（P1-F04 数据，不做解析 UI）
 
 ## 非范围
 
-- 文档 CRUD API 与状态机后端逻辑（见 F03-doc-admin）
-- 解析/分块/embedding 细节 UI（F04）
+- 文档 CRUD API 与状态机后端逻辑（见 P1-F03-doc-admin）
+- 解析/分块/embedding 细节 UI（P1-F04）
 - 全文预览、版本 diff、检索验证入口
-- 正文粘贴（Phase 1 仅文件上传；F03 后端虽允许「文件或正文」）
+- 正文粘贴（Phase 1 仅文件上传；P1-F03 后端虽允许「文件或正文」）
 - 移动端适配（Phase 1 桌面优先）
 
 ## 目标与约束
@@ -33,7 +33,7 @@
 - 状态机必须在 UI 显式体现，禁止跳步：`draft → review → published`
 - Tag 受控枚举：`news` | `sop` | `best_practice` | `knowledge_base` | `faq`
 - 版本：首次 publish = `1.0`；再编辑 publish 递增 minor +0.1（如 1.0 → 1.1）
-- 文件：`.txt` / `.md` / `.pdf`；单文件 ≤ 20MB（Office OOXML 见 Phase 2 F08；不支持旧版 `.doc` / `.ppt`）
+- 文件：`.txt` / `.md` / `.pdf`；单文件 ≤ 20MB（Office OOXML 见 Phase 2 P1-F08；不支持旧版 `.doc` / `.ppt`）
 - 风格：复用聊天页双栏模式（`apps/web/components/chat/ChatWorkspace.tsx`）
 
 ## 页面布局
@@ -52,11 +52,11 @@
 │ 文档行列表            │ │ Title / Tag / 文件上传 / 文件列表 / 校验提示     │ │
 │                       │ └ 操作栏：保存草稿 | 提交审核 | 发布 ──────────────────────┘ │
 │                       │ ┌ 版本信息（可选） ────────────────────────────────┐ │
-│                       │ └ 索引状态（只读，F04 反馈） ──────────────────────┘ │
+│                       │ └ 索引状态（只读，P1-F04 反馈） ──────────────────────┘ │
 └───────────────────────┴──────────────────────────────────────────────────────┘
 ```
 
-入口 `{subdomain}.lxzxai.com/admin`；未登录时 401/403 → 重定向主站 `/login`（F02）。
+入口 `{subdomain}.lxzxai.com/admin`；未登录时 401/403 → 重定向主站 `/login`（P1-F02）。
 
 ## 用户流程详解（上传 → 审核 → 发布）
 
@@ -100,10 +100,10 @@
 
 ```text
 1. 新建 → 只上传文件，不填 Title
-2. 保存草稿 → 成功，仍为草稿（F03-T01）
-3. 提交审核 → ValidationPanel：「请填写文档标题」→ 仍为草稿（F03-T03）
-4. 补 Title、Tag → 保存草稿 → 再提交审核 → 进入待发布（F03-T04）
-5. 发布 → 已发布（F03-T05）
+2. 保存草稿 → 成功，仍为草稿（P1-F03-T01）
+3. 提交审核 → ValidationPanel：「请填写文档标题」→ 仍为草稿（P1-F03-T03）
+4. 补 Title、Tag → 保存草稿 → 再提交审核 → 进入待发布（P1-F03-T04）
+5. 发布 → 已发布（P1-F03-T05）
 ```
 
 ### 流程 C：发布成功但索引失败
@@ -111,7 +111,7 @@
 ```text
 1. 发布成功 → status=published，Stepper=已发布
 2. IngestJobStatusCard → failed + error 摘要（如「无法解析 PDF」）
-3. 文档在 Admin 仍显示「已发布」，但 RAG 检索不到内容（F04 行为）
+3. 文档在 Admin 仍显示「已发布」，但 RAG 检索不到内容（P1-F04 行为）
 4. Phase 1 UI 仅展示失败原因，不提供「重试索引」按钮
 ```
 
@@ -121,7 +121,7 @@
 1. 选中已发布文档 v1.0 → Stepper=已发布，索引 succeeded
 2. 点「编辑新版本」→ 创建 draft，Stepper 回到草稿，version 目标 1.1
 3. 换文件 / 改 Title → 保存草稿 → 提交审核 → 发布
-4. 成功后 version=1.1；索引区重新 polling；旧 v1.0 chunk 由 F04 下线
+4. 成功后 version=1.1；索引区重新 polling；旧 v1.0 chunk 由 P1-F04 下线
 ```
 
 ### 各阶段界面状态
@@ -218,7 +218,7 @@ AdminPage                          apps/web/app/(tenant)/admin/page.tsx
 |------|------|
 | **新建文档** | 创建 draft 文档并在右侧打开 Editor |
 | **搜索框** | 按 `title` 前端过滤（Phase 1 不做服务端搜索） |
-| **Tag Tabs** | `全部` + `公告动态` / `标准操作规程` / `最佳实践` / `知识库` / `常见问题`（对应 F03-T11） |
+| **Tag Tabs** | `全部` + `公告动态` / `标准操作规程` / `最佳实践` / `知识库` / `常见问题`（对应 P1-F03-T11） |
 | **列表行字段** | `title`（主）、`status` badge、`version`、`update_at` |
 | **行点击** | 选中并在右侧加载该文档详情 |
 
@@ -226,7 +226,7 @@ AdminPage                          apps/web/app/(tenant)/admin/page.tsx
 
 ## 状态机与操作栏
 
-UI 必须用 Stepper 显式展示三步，且 **禁止跳步**（对应 F03-T02）：
+UI 必须用 Stepper 显式展示三步，且 **禁止跳步**（对应 P1-F03-T02）：
 
 | status | Stepper 高亮 | 可用 CTA | 禁用/隐藏 |
 |--------|--------------|----------|-----------|
@@ -237,8 +237,8 @@ UI 必须用 Stepper 显式展示三步，且 **禁止跳步**（对应 F03-T02�
 ### Save（draft，status 不变）
 
 - 持久化 title、tag、已选文件；**status 保持 `draft`**。
-- Phase 1：不强制 title/tag/文件齐全（F03-T01）。
-- 文件类型/大小仍在前端与后端校验（F03-T06～T08）。
+- Phase 1：不强制 title/tag/文件齐全（P1-F03-T01）。
+- 文件类型/大小仍在前端与后端校验（P1-F03-T06～T08）。
 
 ### Submit for Review（draft → review）
 
@@ -246,15 +246,15 @@ UI 必须用 Stepper 显式展示三步，且 **禁止跳步**（对应 F03-T02�
   - title 必填
   - tag 必填
   - 至少一份源文件
-- 失败：保持 `draft`，在 `DocValidationPanel` 展示错误（F03-T03）。
-- 成功：status → `review`（F03-T04）。
+- 失败：保持 `draft`，在 `DocValidationPanel` 展示错误（P1-F03-T03）。
+- 成功：status → `review`（P1-F03-T04）。
 
 ### Publish（review → published）
 
 - 仅 `review` 时可点。
-- **Publish confirm 弹窗**：展示 document id、即将发布的 version、tag、文件数量；提示「发布后将触发索引任务（F04）」。
-- 成功：status → `published`；version 首次为 `1.0`（F03-T05）；刷新 `IngestJobStatusCard`。
-- draft 直接 publish：按钮不可用 + 若强行调用 API 则 4xx（F03-T02）。
+- **Publish confirm 弹窗**：展示 document id、即将发布的 version、tag、文件数量；提示「发布后将触发索引任务（P1-F04）」。
+- 成功：status → `published`；version 首次为 `1.0`（P1-F03-T05）；刷新 `IngestJobStatusCard`。
+- draft 直接 publish：按钮不可用 + 若强行调用 API 则 4xx（P1-F03-T02）。
 
 ### review 中编辑
 
@@ -263,14 +263,14 @@ UI 必须用 Stepper 显式展示三步，且 **禁止跳步**（对应 F03-T02�
 ### 已发布再编辑（published → 新 draft）
 
 - 「编辑新版本」：后端创建新版本 draft，UI 重新进入 Editor 流程。
-- 再次 publish 后 version 递增，如 1.0 → 1.1（F03-T10）；Stepper 与 version 面板同步更新。
+- 再次 publish 后 version 递增，如 1.0 → 1.1（P1-F03-T10）；Stepper 与 version 面板同步更新。
 
 ## Editor 表单
 
 | 字段 | 控件 | 规则 |
 |------|------|------|
 | Title | 文本输入 | 提交审核时必填 |
-| Tag | 受控下拉 | 枚举见下表；非法值 4xx（F03-T06） |
+| Tag | 受控下拉 | 枚举见下表；非法值 4xx（P1-F03-T06） |
 | 源文件 | 文件上传（单文件；再上传覆盖） | 见下表 |
 
 ### 字段中文说明（Title / Tag）
@@ -331,13 +331,13 @@ UI 必须用 Stepper 显式展示三步，且 **禁止跳步**（对应 F03-T02�
 
 | 规则 | UI 行为 |
 |------|---------|
-| 允许扩展名 | `.txt` `.md` `.pdf`（Office OOXML 见 F08） |
-| 单文件 ≤ 20MB | 超限拒绝并提示（F03-T08） |
-| 不支持类型（如 `.exe`） | 拒绝并提示（F03-T07） |
-| Office / 旧版 | Phase 1 拒绝 `.doc` / `.ppt` / `.docx` / `.pptx` / `.xlsx`（F03-T07b）；F08 启用 OOXML |
+| 允许扩展名 | `.txt` `.md` `.pdf`（Office OOXML 见 P1-F08） |
+| 单文件 ≤ 20MB | 超限拒绝并提示（P1-F03-T08） |
+| 不支持类型（如 `.exe`） | 拒绝并提示（P1-F03-T07） |
+| Office / 旧版 | Phase 1 拒绝 `.doc` / `.ppt` / `.docx` / `.pptx` / `.xlsx`（P1-F03-T07b）；P1-F08 启用 OOXML |
 | 上传列表 | 每行：filename、content_type、size、校验状态（valid/rejected） |
 
-## 索引反馈（只读，F04）
+## 索引反馈（只读，P1-F04）
 
 位于 Main Panel 底部 `IngestJobStatusCard`，**不做**解析/分块/embedding 细节 UI。
 
@@ -348,7 +348,7 @@ UI 必须用 Stepper 显式展示三步，且 **禁止跳步**（对应 F03-T02�
 | `attempt_count` | 可选展示 |
 | 刷新时机 | Publish 成功后立即请求一次；`pending`/`running` 时每 3s 轮询，终态停止 |
 
-Phase 1 不提供「重试索引」按钮（F04 若有手动重试 API 再扩展）。
+Phase 1 不提供「重试索引」按钮（P1-F04 若有手动重试 API 再扩展）。
 
 ## 前端最小数据结构
 
@@ -396,14 +396,14 @@ type IngestJobStatus = {
 
 | 场景 | 规则 |
 |------|------|
-| 未登录 | 401/403 → 重定向主站 `/login`（F02） |
+| 未登录 | 401/403 → 重定向主站 `/login`（P1-F02） |
 | 请求进行中 | 相关 CTA `disabled` + 文案「处理中…」；禁止重复提交 |
 | API 错误 | Main Panel 顶部 `role="alert"` 展示；Submit for Review 字段错误在 `DocValidationPanel` |
 | Publish | 必须 confirm modal |
 | 空列表 | Sidebar 展示「暂无文档」+ 突出「新建文档」 |
 | 未选文档 | Main Panel 展示占位：「选择或新建文档」 |
 | review 编辑 | 修改内容后提示「已回退为草稿，请重新提交审核」 |
-| 删除 | Phase 1 可选：列表行菜单「删除」+ confirm（软删除，触发 F04 清索引） |
+| 删除 | Phase 1 可选：列表行菜单「删除」+ confirm（软删除，触发 P1-F04 清索引） |
 
 ## 实现分期（建议）
 
@@ -411,20 +411,20 @@ type IngestJobStatus = {
 |------|------|------|
 | **1. 静态骨架** | 结构对齐 Spec | mock 数据驱动 Workspace / Sidebar / Editor / Stepper / IngestJobStatusCard |
 | **2. 半动态交互** | 交互对齐状态机 | 按钮 enable/disable、前端文件校验、Submit for Review 提示、Publish confirm、搜索与 Tag 过滤 |
-| **3. 接 API** | 验收 F03 Test Cases | 列表/详情/save/submit-review/publish/index status；替换 mock |
+| **3. 接 API** | 验收 P1-F03 Test Cases | 列表/详情/save/submit-review/publish/index status；替换 mock |
 
-## UI 与 F03 Test Cases 映射
+## UI 与 P1-F03 Test Cases 映射
 
 | Test Case | UI 验收点 |
 |-----------|-----------|
-| F03-T01 | Save 后 status 仍为 draft；文件列表可见 |
-| F03-T02 | draft 时 Publish 不可见或 disabled |
-| F03-T03 | Submit for Review 缺 title 时 ValidationPanel 提示，仍为 draft |
-| F03-T04 | Submit for Review 成功后 Stepper 到 Review |
-| F03-T05 | Publish 后 Stepper 到 Published，version 显示 1.0，索引区出现 pending/running |
-| F03-T06 | Tag 下拉无非法项；若 API 4xx 则 alert |
-| F03-T07 | 选 .exe 前端拒绝 |
-| F03-T08 | 选 >20MB 前端拒绝 |
-| F03-T09 | API 层（UI 无跨租户入口） |
-| F03-T10 | 「编辑新版本」后 version 递增可见 |
-| F03-T11 | Tag tab 切换后列表仅显示对应 tag |
+| P1-F03-T01 | Save 后 status 仍为 draft；文件列表可见 |
+| P1-F03-T02 | draft 时 Publish 不可见或 disabled |
+| P1-F03-T03 | Submit for Review 缺 title 时 ValidationPanel 提示，仍为 draft |
+| P1-F03-T04 | Submit for Review 成功后 Stepper 到 Review |
+| P1-F03-T05 | Publish 后 Stepper 到 Published，version 显示 1.0，索引区出现 pending/running |
+| P1-F03-T06 | Tag 下拉无非法项；若 API 4xx 则 alert |
+| P1-F03-T07 | 选 .exe 前端拒绝 |
+| P1-F03-T08 | 选 >20MB 前端拒绝 |
+| P1-F03-T09 | API 层（UI 无跨租户入口） |
+| P1-F03-T10 | 「编辑新版本」后 version 递增可见 |
+| P1-F03-T11 | Tag tab 切换后列表仅显示对应 tag |

@@ -14,9 +14,10 @@ Feature 是最小交付单位；**验收只看该 Feature 的 Test Cases 是否�
 |------|------|
 | [00-constraints.mdc](../../.cursor/rules/00-constraints.mdc) | 根本规则（`.cursor/rules/`） |
 | [01-phase-list.md](01-phase-list.md) | Phase 清单 |
-| [_TEMPLATE.md](_TEMPLATE.md) | Feature 模板（新建时复制到 `phaseN/features/`） |
-| [phase1/](phase1/) | Phase 1 Spec |
-| [phase2/](phase2/) | Phase 2 Spec |
+| [_TEMPLATE.md](_TEMPLATE.md) | Feature 模板（新建时复制到 `phaseN/features/`；ID=`P{n}-F{nn}-{slug}`） |
+| [phase1/](phase1/) | Phase 1 Spec（`P1-Fxx`） |
+| [phase2/](phase2/) | Phase 2 Spec（`P2-Fxx`） |
+| [phase3/](phase3/) | Phase 3 Spec（`P3-Fxx`） |
 
 ## Spec 哲学
 
@@ -24,7 +25,7 @@ Feature 是最小交付单位；**验收只看该 Feature 的 Test Cases 是否�
 |------|------|
 | Constraints | 全项目不可违反的边界 |
 | Phase | 交付阶段；见 Phase List |
-| Feature | 最小单位；mermaid flow 消除理解歧义；状态 `draft`→`review`→`approved`→`done` |
+| Feature | 最小单位；ID=`P{n}-F{nn}`；mermaid flow；状态 `draft`→`review`→`approved`→`done` |
 | Test cases | 唯一验收标准 |
 
 **未 `approved` 的 Feature 不得实现**（见 [00-constraints.mdc](../../.cursor/rules/00-constraints.mdc) §8）。

@@ -1,7 +1,7 @@
 # Phase 2 Specs
 
 Phase 2 产品 Spec。Feature 是最小交付单位；**验收只看该 Feature 的 Test Cases 是否通过**。  
-F13 / F14 为 **`done`**；其余 Feature 仍为 **`draft`**（未 `approved` 不得实现）。
+P2-F06 / P2-F07 为 **`done`**；其余 Feature 仍为 **`draft`**（未 `approved` 不得实现）。
 
 ## 怎么读
 
@@ -16,12 +16,12 @@ F13 / F14 为 **`done`**；其余 Feature 仍为 **`draft`**（未 `approved` �
 
 | 能力 | Feature |
 |------|---------|
-| Office OOXML（`.docx` / `.xlsx` / `.pptx`）上传与索引 | F08 |
-| Admin 文件夹树 | F09 |
-| 文档预览 | F10 |
-| 对外 API + API Key | F11 |
-| Embed Widget | F12 |
-| Portal FAQ 推荐 | F13 |
-| Portal 壳与延迟会话 | F14 |
+| Office OOXML（`.docx` / `.xlsx` / `.pptx`）上传与索引 | P2-F01 |
+| Admin 文件夹树 | P2-F02 |
+| 文档预览 | P2-F03 |
+| 对外 API + API Key | P2-F04 |
+| Embed Widget | P2-F05 |
+| Portal FAQ 推荐 | P2-F06 |
+| Portal 壳与延迟会话 | P2-F07 |
 
-微信登录、SOP 强制验证门禁 → **Phase 3**（见 phase list）。
+微信登录、SOP 强制验证门禁 → **Phase 4**（见 [phase list](../01-phase-list.md)）。

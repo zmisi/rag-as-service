@@ -10,7 +10,7 @@ Phase 1 产品 Spec。Feature 是最小交付单位；**验收只看该 Feature 
 4. [02-data-model.md](02-data-model.md) — 共享 Schema 表结构与 ER
 5. [features/](features/) — 各 Feature（flow + 行为规则 + test cases）
 
-新建 Feature 时复制 [../_TEMPLATE.md](../_TEMPLATE.md) 到 `features/`。
+新建 Feature 时复制 [../_TEMPLATE.md](../_TEMPLATE.md) 到 `features/`，ID 使用 `P1-F{nn}-{slug}`。
 
 ## 域名一览
 

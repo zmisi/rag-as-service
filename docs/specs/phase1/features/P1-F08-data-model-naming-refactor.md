@@ -1,6 +1,6 @@
-# F08 数据模型列命名与身份字段重构
+# P1-F08 数据模型列命名与身份字段重构
 
-> 在 F07 版本行 / 双状态基础上，统一主键与业务列命名（`tenant_id` / `user_id` / `doc_id` / `chunk_id` 等），扩展租户/用户/成员状态字段；**保留** `tenant_members.user_id` 与文档多版本唯一约束；时间戳仍为 `create_at` / `update_at`。
+> 在 P1-F07 版本行 / 双状态基础上，统一主键与业务列命名（`tenant_id` / `user_id` / `doc_id` / `chunk_id` 等），扩展租户/用户/成员状态字段；**保留** `tenant_members.user_id` 与文档多版本唯一约束；时间戳仍为 `create_at` / `update_at`。
 
 
 | 字段 | 值 |
@@ -14,10 +14,10 @@
 
 ## 范围
 
-- 回写 [02-data-model.md](../02-data-model.md) 与受影响的 F01–F04 / F07 数据边界（列名）
+- 回写 [02-data-model.md](../02-data-model.md) 与受影响的 P1-F01–P1-F04 / P1-F07 数据边界（列名）
 - Alembic + ORM：下列五表（及相关 FK 引用列）按本 Spec 重命名/增列
 - 适配注册 / 登录鉴权 / 文档 API / 索引 worker / search / Admin DTO
-- 破坏性迁移可接受（开发期）；迁移后须回归 F01–F07 关键路径
+- 破坏性迁移可接受（开发期）；迁移后须回归 P1-F01–P1-F07 关键路径
 
 ### 表级变更摘要
 
@@ -40,7 +40,7 @@
 2. UK `uk_tenants_tenant_name`：`tenant_name`
 3. 删除本表上其他业务唯一/冗余索引（trigger `tr_tenants_lmt` 保留）
 
-**`tenant_name` 规则**（须同步改 constraints / F01）：
+**`tenant_name` 规则**（须同步改 constraints / P1-F01）：
 
 - 小写字母、数字；**允许连字符 `-`**（与现网子域规则一致，避免破坏已有租户）
 - 长度 **3–32**；不以 `-` 开头或结尾
@@ -87,7 +87,7 @@
 5. FK：`tenant_id` → `tenants.tenant_id`；`user_id` → `users.user_id`
 6. `tr_tenant_members_lmt` 保留
 
-#### 4. `documents`（版本行，承接 F07）
+#### 4. `documents`（版本行，承接 P1-F07）
 
 | 变更 | 说明 |
 |------|------|
@@ -120,7 +120,7 @@
 |------|------|
 | `id` → **`chunk_id`** | PK |
 | `document_id` → **`doc_id`** | FK → `documents.doc_id` ON DELETE CASCADE |
-| 其余富字段 | 保持 F07：`chunk_index`, `heading_path`, `content`, `embedding`, `section_id`, `embedding_text`, `chunk_type`, `token_count`, `content_hash`, `content_tsv`, `metadata_`, `is_latest` |
+| 其余富字段 | 保持 P1-F07：`chunk_index`, `heading_path`, `content`, `embedding`, `section_id`, `embedding_text`, `chunk_type`, `token_count`, `content_hash`, `content_tsv`, `metadata_`, `is_latest` |
 | 时间戳 | `create_at` / `update_at` |
 
 **列顺序**：`chunk_id`, `tenant_id`, `doc_id`, `chunk_index`, `content`, `embedding`, `section_id`, `heading_path`, `embedding_text`, `chunk_type`, `token_count`, `content_hash`, `content_tsv`, `metadata_`, `is_latest`, `create_at`, `update_at`
@@ -129,7 +129,7 @@
 
 1. PK `pk_document_chunks_chunk_id`：`chunk_id`
 2. UK `uk_document_chunks_doc_id_chunk_index`：`(doc_id, chunk_index)`
-3. **保留**检索相关索引：`(tenant_id) WHERE is_latest`、`(section_id)`、向量索引策略同 F04（名称可规范化）
+3. **保留**检索相关索引：`(tenant_id) WHERE is_latest`、`(section_id)`、向量索引策略同 P1-F04（名称可规范化）
 4. `tr_document_chunks_lmt` 保留
 
 ### 级联更名（实现必做，本 Spec 验收包含）
@@ -148,17 +148,17 @@
 - 将时间戳改为 `created_at` / `updated_at`
 - 邀请制 Add member 完整产品（可预留；Phase 1 可仅支持「已存在 email 的用户加入」）
 - 计费扣款、支付网关（仅落 `charge_mode` 列）
-- 改 embedding 维度默认值；改 F04 解析算法本身
+- 改 embedding 维度默认值；改 P1-F04 解析算法本身
 
 ## Flow
 
 ```mermaid
 flowchart TD
-  A[F08 Spec approved] --> B[回写 02-data-model / F01-F04 列名]
+  A[P1-F08 Spec approved] --> B[回写 02-data-model / P1-F01-P1-F04 列名]
   B --> C[Alembic 重命名与增列]
   C --> D[ORM + 服务 + DTO + Admin]
   D --> E[注册仍写 tenant_members.user_id]
-  E --> F[测试: schema / 鉴权 / 版本 UK / F04 search]
+  E --> F[测试: schema / 鉴权 / 版本 UK / P1-F04 search]
   F --> G[Status done]
 ```
 
@@ -168,7 +168,7 @@ flowchart TD
 2. Host 解析：`{tenant_name}.lxzxai.com` → `tenants.tenant_name` → `tenant_id`；未知 → 404。
 3. **`tenant_members.user_id` 必填**；注册成功必须插入 owner 成员行（`user_id`=新用户，`member_name`←`user_name`，`active=1`，`role=owner`）。
 4. Add member：目标必须是已有 `users` 行（或其接受邀请后创建的用户）；写入其 `user_id`。禁止无成员行代替登录账号表。
-5. `users.active=0` 或成员 `active=0`：不得以该身份访问对应租户（具体 401/403 与 F02 对齐，实现时固定一种）。
+5. `users.active=0` 或成员 `active=0`：不得以该身份访问对应租户（具体 401/403 与 P1-F02 对齐，实现时固定一种）。
 6. 文档仍为**版本行**：`doc_id`=版本 PK；同组多 `version_number`；检索门禁仍为 `publish_status=published` AND `ingest_status=ready` AND `deleted_at IS NULL` AND `is_latest`（section/chunk）+ `tenant_id`。
 7. API JSON 可对旧字段名做**短期别名**（如 `status`→`publish_status`、`title`→`doc_name`），内部 ORM 用新列名；别名废弃计划在实现任务中注明。
 8. `file_size_bytes`：publish/保存文件后更新为本版本源文件字节数；无文件可为 `0`。
@@ -191,16 +191,16 @@ flowchart TD
 
 | ID | 步骤 | 期望 | 类型 |
 |----|------|------|------|
-| F08-T01 | Given 迁移已应用 When 检查五表列与约束名 | Then PK/UK 命名与本 Spec 一致；时间为 `create_at`/`update_at`；存在 `tr_*_lmt`；无 `tenant_members` 缺 `user_id` | unit |
-| F08-T02 | Given 注册 When 落库 | Then `tenants.tenant_name` 唯一；`users.user_name`/`active=1`；`tenant_members` 含同一 `user_id` 且 `role=owner`、`member_name` 与 `user_name` 一致 | api |
-| F08-T03 | Given 未知 `tenant_name` Host When 访问 | Then 404 | api |
-| F08-T04 | Given 用户 `active=0` When 登录或访问租户 | Then 拒绝（401/403，实现固定一种） | api |
-| F08-T05 | Given 同组已有 `version_number=1` When 再发布 v2 | Then 两行共享 `doc_group_id`；UK `(tenant_id,doc_group_id,version_number)` 成立；latest 翻转 | api |
-| F08-T06 | Given 试图插入仅 `doc_group_id` 重复且同 version When 写库 | Then 违反唯一约束失败 | unit |
-| F08-T07 | Given 上传文件并 publish When 读 documents | Then `doc_size` 等于该版本文件字节之和；列名为 `doc_id`/`doc_name`/`source_metadata` | api |
-| F08-T08 | Given 已索引语料 When search | Then 仍按 `tenant_id`+published+ready+`is_latest` 命中；chunk 列为 `chunk_id`/`doc_id` | api |
-| F08-T09 | Given tenant-A 成员 When 访问 tenant-B | Then 403/404；隔离仍成立 | api |
-| F08-T10 | Given 审阅 02-data-model When 对照 F08 | Then 文档列名与本 Spec 一致，且写明保留 `user_id` 与版本 UK | unit |
+| P1-F08-T01 | Given 迁移已应用 When 检查五表列与约束名 | Then PK/UK 命名与本 Spec 一致；时间为 `create_at`/`update_at`；存在 `tr_*_lmt`；无 `tenant_members` 缺 `user_id` | unit |
+| P1-F08-T02 | Given 注册 When 落库 | Then `tenants.tenant_name` 唯一；`users.user_name`/`active=1`；`tenant_members` 含同一 `user_id` 且 `role=owner`、`member_name` 与 `user_name` 一致 | api |
+| P1-F08-T03 | Given 未知 `tenant_name` Host When 访问 | Then 404 | api |
+| P1-F08-T04 | Given 用户 `active=0` When 登录或访问租户 | Then 拒绝（401/403，实现固定一种） | api |
+| P1-F08-T05 | Given 同组已有 `version_number=1` When 再发布 v2 | Then 两行共享 `doc_group_id`；UK `(tenant_id,doc_group_id,version_number)` 成立；latest 翻转 | api |
+| P1-F08-T06 | Given 试图插入仅 `doc_group_id` 重复且同 version When 写库 | Then 违反唯一约束失败 | unit |
+| P1-F08-T07 | Given 上传文件并 publish When 读 documents | Then `doc_size` 等于该版本文件字节之和；列名为 `doc_id`/`doc_name`/`source_metadata` | api |
+| P1-F08-T08 | Given 已索引语料 When search | Then 仍按 `tenant_id`+published+ready+`is_latest` 命中；chunk 列为 `chunk_id`/`doc_id` | api |
+| P1-F08-T09 | Given tenant-A 成员 When 访问 tenant-B | Then 403/404；隔离仍成立 | api |
+| P1-F08-T10 | Given 审阅 02-data-model When 对照 P1-F08 | Then 文档列名与本 Spec 一致，且写明保留 `user_id` 与版本 UK | unit |
 
 ## 修订记录
 

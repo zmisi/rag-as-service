@@ -1,4 +1,4 @@
-# F10 文档预览
+# P2-F03 文档预览
 
 > `/admin` 对已上传文档提供只读预览，便于 verify / publish 前人工查看。
 
@@ -17,7 +17,7 @@
 - 按类型策略：
   - `.txt` / `.md`：返回纯文本（UTF-8）
   - `.pdf`：返回可内嵌的预览 URL（同源受控，短时签名或会话鉴权流）
-  - `.docx` / `.pptx` / `.xlsx`：服务端转为 **只读 HTML** 预览（可用轻量库或等价转换一次缓存；**不要求** Docling）；依赖 F08 已允许上传这些类型；不提供下载式编辑
+  - `.docx` / `.pptx` / `.xlsx`：服务端转为 **只读 HTML** 预览（可用轻量库或等价转换一次缓存；**不要求** Docling）；依赖 P2-F01 已允许上传这些类型；不提供下载式编辑
 - 仅租户成员；跨租户拒绝
 
 ## 非范围
@@ -61,10 +61,10 @@ flowchart TD
 
 | ID | 步骤 | 期望 | 类型 |
 |----|------|------|------|
-| F10-T01 | Given 已上传 `.md` When GET preview | Then 200；body 含原文关键片段 | api |
-| F10-T02 | Given 已上传 `.pdf` When GET preview | Then 200；返回可取流的受控 URL；无 cookie 访问该 URL → 401/403 | api |
-| F10-T03 | Given 已上传 `.docx` When GET preview | Then 200；`Content-Type` 含 html；只读内容可断言标题/段落文本 | api |
-| F10-T04 | Given `.xlsx` When GET preview | Then 200 HTML；含单元格可见文本 | api |
-| F10-T05 | Given tenant-A 文件 When tenant-B preview | Then 404 或 403 | api |
-| F10-T06 | Given 未登录 When preview | Then 401 | api |
-| F10-T07 | Given 替换同文档文件后 When preview | Then 新内容生效（旧 cache 不命中） | api |
+| P2-F03-T01 | Given 已上传 `.md` When GET preview | Then 200；body 含原文关键片段 | api |
+| P2-F03-T02 | Given 已上传 `.pdf` When GET preview | Then 200；返回可取流的受控 URL；无 cookie 访问该 URL → 401/403 | api |
+| P2-F03-T03 | Given 已上传 `.docx` When GET preview | Then 200；`Content-Type` 含 html；只读内容可断言标题/段落文本 | api |
+| P2-F03-T04 | Given `.xlsx` When GET preview | Then 200 HTML；含单元格可见文本 | api |
+| P2-F03-T05 | Given tenant-A 文件 When tenant-B preview | Then 404 或 403 | api |
+| P2-F03-T06 | Given 未登录 When preview | Then 401 | api |
+| P2-F03-T07 | Given 替换同文档文件后 When preview | Then 新内容生效（旧 cache 不命中） | api |

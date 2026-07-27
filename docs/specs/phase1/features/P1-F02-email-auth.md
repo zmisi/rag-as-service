@@ -1,4 +1,4 @@
-# F02 Email 登录与会话
+# P1-F02 Email 登录与会话
 
 > Email 登录/登出；主站与租户站（含 `/admin`）共用 `Domain=.lxzxai.com` 会话。
 
@@ -21,8 +21,8 @@
 
 ## 非范围
 
-- 注册与创建租户（F01）
-- 微信登录（Phase 1.5）
+- 注册与创建租户（P1-F01）
+- 微信登录（Phase 4）
 - 密码重置、邮箱验证（Phase 1 不做，无 Test Case）
 - RBAC 细粒度角色（Phase 1：owner 即可访问本租户 admin）
 
@@ -57,7 +57,7 @@ flowchart TD
 5. Host 上的 subdomain 与会话用户的租户成员关系必须匹配，否则 403（防止拿 A 租户 cookie 操作 B 租户）。
 6. 登出入口：`lxzxai.com` 或 `{subdomain}.lxzxai.com` 均可 `POST /logout`；使服务端 session 失效并清除 cookie；之后访问需鉴权资源须重新登录。
 7. 错误响应不泄露「email 是否存在」以外的多余信息：统一「邮箱或密码错误」。
-8. 注册入口仅在主站（F01）；在 `{subdomain}.lxzxai.com` 访问 `/register` 时 **不得** 渲染租户站注册页，应 **302 重定向** 至 `https://lxzxai.com/register`（本地开发保留当前端口）。
+8. 注册入口仅在主站（P1-F01）；在 `{subdomain}.lxzxai.com` 访问 `/register` 时 **不得** 渲染租户站注册页，应 **302 重定向** 至 `https://lxzxai.com/register`（本地开发保留当前端口）。
 
 ## 数据与边界
 
@@ -72,12 +72,12 @@ flowchart TD
 
 | ID | 步骤 | 期望 | 类型 |
 |----|------|------|------|
-| F02-T01 | Given 已注册用户 When 正确密码登录 | Then 200/302；Set-Cookie Domain=`.lxzxai.com`；Location 为 `https://{subdomain}.lxzxai.com`（非 `/admin`） | api |
-| F02-T02 | Given 已注册用户 When 错误密码登录 | Then 401；不签发有效会话 | api |
-| F02-T03 | Given 有效会话 When 访问本租户 `/admin` | Then 200（或页面可达） | e2e |
-| F02-T04 | Given 有效会话 When 无 cookie 访问 `/admin` | Then 302→登录 或 401 | e2e |
-| F02-T05 | Given 用户为 tenant-A 成员 When 带会话访问 tenant-B Host `/admin` | Then 403 | api |
-| F02-T06 | Given 已登录 When 登出后再访 `/admin` | Then 未认证 | e2e |
-| F02-T07 | Given 主站登录成功 When 请求 `{subdomain}.lxzxai.com` 需鉴权 API | Then 同一 cookie 通过鉴权，无需再登录 | api |
-| F02-T08 | Given 已登录 When 在 `{subdomain}.lxzxai.com` POST logout | Then 204；session 失效；cookie 清除；后续鉴权请求未认证 | api |
-| F02-T09 | Given 租户 Host When GET `/register` | Then 302 至 `https://lxzxai.com/register`（非租户页）；不得 200 渲染注册表单 | e2e |
+| P1-F02-T01 | Given 已注册用户 When 正确密码登录 | Then 200/302；Set-Cookie Domain=`.lxzxai.com`；Location 为 `https://{subdomain}.lxzxai.com`（非 `/admin`） | api |
+| P1-F02-T02 | Given 已注册用户 When 错误密码登录 | Then 401；不签发有效会话 | api |
+| P1-F02-T03 | Given 有效会话 When 访问本租户 `/admin` | Then 200（或页面可达） | e2e |
+| P1-F02-T04 | Given 有效会话 When 无 cookie 访问 `/admin` | Then 302→登录 或 401 | e2e |
+| P1-F02-T05 | Given 用户为 tenant-A 成员 When 带会话访问 tenant-B Host `/admin` | Then 403 | api |
+| P1-F02-T06 | Given 已登录 When 登出后再访 `/admin` | Then 未认证 | e2e |
+| P1-F02-T07 | Given 主站登录成功 When 请求 `{subdomain}.lxzxai.com` 需鉴权 API | Then 同一 cookie 通过鉴权，无需再登录 | api |
+| P1-F02-T08 | Given 已登录 When 在 `{subdomain}.lxzxai.com` POST logout | Then 204；session 失效；cookie 清除；后续鉴权请求未认证 | api |
+| P1-F02-T09 | Given 租户 Host When GET `/register` | Then 302 至 `https://lxzxai.com/register`（非租户页）；不得 200 渲染注册表单 | e2e |

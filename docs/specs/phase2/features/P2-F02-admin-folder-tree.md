@@ -1,4 +1,4 @@
-# F09 Admin 文件夹树
+# P2-F02 Admin 文件夹树
 
 > `/admin` 以文件夹树组织文档：建夹、移动、树形展现；文档可归属文件夹。
 
@@ -20,7 +20,7 @@
 
 ## 非范围
 
-- F04 标题层级（已支持 H1–H6；本 Feature 不扩展）
+- P1-F04 标题层级（已支持 H1–H6；本 Feature 不扩展）
 - 文件夹级 ACL / 分享链接
 - 回收站（软删文件夹可选；Phase 2：**硬规则见下，不用回收站**）
 
@@ -59,11 +59,11 @@ flowchart TD
 
 | ID | 步骤 | 期望 | 类型 |
 |----|------|------|------|
-| F09-T01 | Given 成员 When 在根创建文件夹 `A` | Then 201；树中可见 | api |
-| F09-T02 | Given 同父下已有 `A` When 再创建 `a` | Then 4xx 重名 | api |
-| F09-T03 | Given 文档在根 When 移入文件夹 A | Then `folder_id=A`；在 A 列表可见、根列表不可见（除非查询含） | api |
-| F09-T04 | Given 文件夹含文档 When DELETE 夹 | Then 4xx；夹仍在 | api |
-| F09-T05 | Given 空文件夹 When DELETE | Then 204；树中消失 | api |
-| F09-T06 | Given 深度已 10 When 再嵌套子夹 | Then 4xx | api |
-| F09-T07 | Given 移动 B 使其 parent 变为 B 的子孙 | Then 4xx 成环 | api |
-| F09-T08 | Given tenant-A 文件夹 id When tenant-B GET | Then 404 或 403 | api |
+| P2-F02-T01 | Given 成员 When 在根创建文件夹 `A` | Then 201；树中可见 | api |
+| P2-F02-T02 | Given 同父下已有 `A` When 再创建 `a` | Then 4xx 重名 | api |
+| P2-F02-T03 | Given 文档在根 When 移入文件夹 A | Then `folder_id=A`；在 A 列表可见、根列表不可见（除非查询含） | api |
+| P2-F02-T04 | Given 文件夹含文档 When DELETE 夹 | Then 4xx；夹仍在 | api |
+| P2-F02-T05 | Given 空文件夹 When DELETE | Then 204；树中消失 | api |
+| P2-F02-T06 | Given 深度已 10 When 再嵌套子夹 | Then 4xx | api |
+| P2-F02-T07 | Given 移动 B 使其 parent 变为 B 的子孙 | Then 4xx 成环 | api |
+| P2-F02-T08 | Given tenant-A 文件夹 id When tenant-B GET | Then 404 或 403 | api |

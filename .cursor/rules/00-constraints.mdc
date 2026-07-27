@@ -18,12 +18,12 @@ alwaysApply: true
 
 - 不再使用 `lxtechai.com`。
 - Host 解析到租户：`subdomain` → `tenant_id`；未知 subdomain → 404。
-- 租户根路径 = 聊天入口（Portal）；`/admin` = 管理端；`/api` = 对外整合（见 Phase 2 F11）。
+- 租户根路径 = 聊天入口（Portal）；`/admin` = 管理端；`/api` = 对外整合（见 Phase 2 P2-F04）。
 
 ## 2. 多租户与子域
 
 - 一个注册用户创建一个租户；数据与向量索引按 `tenant_id` 隔离。
-- 租户 `tenant_name`（Host 二级域名；历史文案亦称 subdomain）：注册时由用户选定，系统校验格式与**全局唯一**（Phase 1 选定后不可改，见 F01）。
+- 租户 `tenant_name`（Host 二级域名；历史文案亦称 subdomain）：注册时由用户选定，系统校验格式与**全局唯一**（Phase 1 选定后不可改，见 P1-F01）。
 - `tenant_name` 规则：
   - 小写字母、数字、连字符 `-`
   - 长度 3–32
@@ -86,45 +86,59 @@ alwaysApply: true
 ## 4. 认证
 
 - Phase 1 **仅 Email** 注册与登录（会话 cookie）。
-- 微信登录：**不做验收**；标 **Phase 3**（见 [01-phase-list.md](../../docs/specs/01-phase-list.md)）。
+- 微信登录：**不做验收**；标 **Phase 4**（见 [01-phase-list.md](../../docs/specs/01-phase-list.md)）。
 - 会话：cookie `Domain=.lxzxai.com`；主站与 `{subdomain}.lxzxai.com`（含 `/admin`）同一会话族。
-- Phase 2 对外 API：租户 **API Key**（Bearer）；Embed Widget：公开 **site key** + Origin 白名单（见 F11/F12）。与成员 cookie 会话分离。
+- Phase 2 对外 API：租户 **API Key**（Bearer）；Embed Widget：公开 **site key** + Origin 白名单（见 P2-F04/P2-F05）。与成员 cookie 会话分离。
 
 ## 5. 文档与索引
 
-- 文档状态机：`draft` → `review` → `published`（细节见 F03）。
-- **仅 `published` 文档进入索引**（F04）；未发布文档不可被 RAG 检索（F06）。
-- `review` 是可测状态，**不做 SOP 内容强制校验**（SOP 门禁属 **Phase 3**）。
+- 文档状态机：`draft` → `review` → `published`（细节见 P1-F03）。
+- **仅 `published` 文档进入索引**（P1-F04）；未发布文档不可被 RAG 检索（P1-F06）。
+- `review` 是可测状态，**不做 SOP 内容强制校验**（SOP 门禁属 **Phase 4**）。
 - Phase 1 类型：`.txt` / `.md` / `.pdf`（不支持旧版 `.doc` / `.ppt` / `.xls`）。
-- Phase 2 Office OOXML（`.docx` / `.xlsx` / `.pptx`）上传与索引：见 F08。
-- 版本从整数 `1` 起（展示 `v1`）；见 F03/F07。
+- Phase 2 Office OOXML（`.docx` / `.xlsx` / `.pptx`）上传与索引：见 P2-F01。
+- 版本从整数 `1` 起（展示 `v1`）；见 P1-F03/P1-F07。
 
 ## 6. Agent（Phase 1）
 
 - 租户入口当前能力：RAG Agent（检索 + 多轮对话）。
 - LLM 调用使用 QWen。
-- Agent Loop（无前置意图分类）、上下文组装、记忆压缩、工具调用：见 F06。
+- Agent Loop（无前置意图分类）、上下文组装、记忆压缩、工具调用：见 P1-F06。
 
 ## 7. Phase 边界（摘要）
 
 ### Phase 1 明确不做（仍成立）
 
-- 微信登录验收（Phase 3）
-- SOP 必须验证成功才能上传/发布（Phase 3）
+- 微信登录验收（Phase 4）
+- SOP 必须验证成功才能上传/发布（Phase 4）
 - 跨租户共享知识库
 
 ### Phase 2 范围（见 [phase2/](../../docs/specs/phase2/)）
 
-- Office OOXML（`.docx` / `.xlsx` / `.pptx`）上传与索引
-- Admin 文件夹树、文档预览
-- `{subdomain}.lxzxai.com/api` + API Key；Embed Widget
-- Portal FAQ 推荐（热度 / 换一批）；Portal 壳与 New task 延迟会话（F14）
+- Office OOXML（`.docx` / `.xlsx` / `.pptx`）上传与索引（P2-F01）
+- Admin 文件夹树、文档预览（P2-F02 / P2-F03）
+- `{subdomain}.lxzxai.com/api` + API Key；Embed Widget（P2-F04 / P2-F05）
+- Portal FAQ 推荐；Portal 壳与 New task 延迟会话（P2-F06 / P2-F07）
 
-### Phase 3 预留
+### Phase 3 范围（见 [phase3/](../../docs/specs/phase3/)）
 
-- 微信登录、SOP 强制验证门禁；OCR / 超过 H6 的无限深标题树等增强
+- 生产上线与主 Flow 验收（P3-F01）
+- 索引质量增强：可选 OCR、表格/标题（P3-F02）
+- Portal 搜索 Cursor 风（P3-F03）
+
+### Phase 4 预留
+
+- 微信登录、SOP 强制验证门禁
 
 ## 8. Feature 状态（实现门禁）
+
+### 8.0 Feature ID 格式
+
+- 全局唯一：`P{phase}-F{nn}-{slug}`（例：`P1-F01-registration-tenancy`、`P2-F01-office-ooxml`、`P3-F01-production-launch`）。
+- 各 Phase 内 `F{nn}` **从 01 起排**；文件名与文首标题、Test Case 前缀（`P{n}-F{nn}-T01`）一致。
+- Feature List 的 ID 列写 `P{n}-F{nn}`（可省略 slug）。
+
+### 8.1 状态
 
 每个 Feature Spec 必须标注状态，取值仅限：
 

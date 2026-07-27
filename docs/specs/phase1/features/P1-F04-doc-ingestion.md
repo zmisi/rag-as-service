@@ -1,4 +1,4 @@
-# F04 文档摄入
+# P1-F04 文档摄入
 
 > 仅对 `published` 文档解析、按 **H1–H6 节树** 分块、embedding（仅 leaf），写入 PostgreSQL/pgvector；提供内部 **向量检索**（命中 leaf → 返回 **所属节全文 + path**）；按租户隔离。
 
@@ -10,39 +10,39 @@
 | **Approved by** | team |
 | **Approved at** | 2026-07-22 |
 
-> **数据模型依赖**：列名与版本行语义以 [02-data-model.md](../02-data-model.md) 与 [F07-doc-ingestion-data-model.md](F07-doc-ingestion-data-model.md) 为准（`is_latest` 替代原 `is_active`；`ingest_status`；`section_index`/`chunk_index`；富 chunk 字段）。本 Feature 索引/检索行为仍有效；持久化重构由 F07 验收。
+> **数据模型依赖**：列名与版本行语义以 [02-data-model.md](../02-data-model.md) 与 [P1-F07-doc-ingestion-data-model.md](P1-F07-doc-ingestion-data-model.md) 为准（`is_latest` 替代原 `is_active`；`ingest_status`；`section_index`/`chunk_index`；富 chunk 字段）。本 Feature 索引/检索行为仍有效；持久化重构由 P1-F07 验收。
 
 ## 范围
 
 - 消费「文档已 publish」事件（或等价轮询 `ingest_job`）
-- 解析 `.txt` / `.md` / `.pdf`（与 F03 Phase 1 一致；**不含** Office OOXML，见 Phase 2 [F08](../../phase2/features/F08-office-ooxml.md)）
+- 解析 `.txt` / `.md` / `.pdf`（与 P1-F03 Phase 1 一致；**不含** Office OOXML，见 Phase 2 [P1-F08](../../phase2/features/P2-F01-office-ooxml.md)）
 - **PDF 骨架感知双路由**：有骨架 → **Docling 结构路径**（打标签：H1/H2/H3…、段落、表格、图片占位；`do_ocr=false`）；无骨架纯文字 → **PyMuPDF**；无骨架但文字质量差/打开失败时可 fallback Docling
-- **Office 解析**：不在本 Feature；`.docx` / `.xlsx` / `.pptx` → F08（轻量库：`python-docx` / `python-pptx` / `openpyxl`；非 Docling）
+- **Office 解析**：不在本 Feature；`.docx` / `.xlsx` / `.pptx` → P1-F08（轻量库：`python-docx` / `python-pptx` / `openpyxl`；非 Docling）
 - **层级感知切块**：从解析结果（结构 Markdown）构建 **H1–H6** 节树；超过 H6 的标题并入最近 H6 叶节；节内再按可配置 token 切出 leaf chunk
 - **仅 leaf** 写入 embedding / pgvector；节全文与 `path` 存于 `document_sections`
 - 推进版本行 **`ingest_status`**：`pending` → `processing` → `ready` / `failed`
-- **内部检索** `search(tenant_id, query, top_k)`：`is_latest` leaf 向量 top-k → 组装节全文 + `path`（供 F06 `search_knowledge` 调用）
+- **内部检索** `search(tenant_id, query, top_k)`：`is_latest` leaf 向量 top-k → 组装节全文 + `path`（供 P1-F06 `search_knowledge` 调用）
 - 文档软删除或新版本索引成功后：旧 version 的 section / chunk / documents **`is_latest=false`**
 
 ## 非范围
 
-- Admin UI 与发布状态机（F03）
-- 文档版本行 schema / 双状态列迁移与富 chunk 字段落地（F07）
-- Agent 对话与 Agent Loop / `search_knowledge` 工具编排（F06；F06 只调用本 Feature 的 `search`）
+- Admin UI 与发布状态机（P1-F03）
+- 文档版本行 schema / 双状态列迁移与富 chunk 字段落地（P1-F07）
+- Agent 对话与 Agent Loop / `search_knowledge` 工具编排（P1-F06；P1-F06 只调用本 Feature 的 `search`）
 - 未 publish 文档的预览索引
 - **OCR** / 扫描件文字识别（无文字层 PDF 见行为规则：空成功；双路由 **不** 为扫描件开启 OCR）
-- 中文专用 OCR 后端（如 PaddleOCR）、云服务兜底（如 LlamaParse）——留 Phase 1.5+ 评估
+- 中文专用 OCR 后端（如 PaddleOCR）、云服务兜底（如 LlamaParse）——见 Phase 3 P3-F02 / 后续评估
 - **超过 H6** 的无限深目录树（本 Feature 上限 H6；更深并入 H6）
 - Dify 式 Parent-child 的「Full Doc」整篇 parent、或仅扁平 General 切块（无节树）
 - 持久化第三方解析器原生对象树（仅落自家 `document_sections` / `document_chunks`）
-- 对外 REST 检索网关（Phase 2 F11）
-- Office OOXML 解析（Phase 2 F08）
+- 对外 REST 检索网关（Phase 2 P2-F04）
+- Office OOXML 解析（Phase 2 P1-F08）
 
 ## Flow
 
 ```mermaid
 flowchart TD
-  A[F03 Publish 成功] --> B[入队 ingest_job / documents.ingest_status=pending]
+  A[P1-F03 Publish 成功] --> B[入队 ingest_job / documents.ingest_status=pending]
   B --> C[worker 抢到 job → ingest_status=processing]
   C --> D[拉取源文件]
   D --> E{解析成功?}
@@ -82,7 +82,7 @@ flowchart TD
   T2 --> U
 ```
 
-> Office（`.docx` / `.xlsx` / `.pptx`）解析图见 [F08](../../phase2/features/F08-office-ooxml.md)。
+> Office（`.docx` / `.xlsx` / `.pptx`）解析图见 [P1-F08](../../phase2/features/P2-F01-office-ooxml.md)。
 
 ```mermaid
 flowchart LR
@@ -116,7 +116,7 @@ flowchart LR
      3. **有骨架（或 force）→ 结构路径 Docling**：`do_ocr=false`；识别并打标签 **H1/H2/H3…、段落、表格、图片**（图为占位/题注，不 OCR）；经 `ParseBlock` → Markdown；`parse_route=docling`。Docling 未安装 → 按规则 6 **failed**（禁止悄悄退回 flat PyMuPDF 冒充结构成功）。
      4. **无骨架 + 有字 → PyMuPDF 纯文本**：`parse_route=pymupdf`。质量门限（`PDF_FAST_*`）仅作无骨架路径辅助：乱码/质量差或打开失败时可 fallback Docling。
      5. **不得**仅因「字符够多」把有骨架 PDF 压成扁平原文。
-   - **`.docx` / `.xlsx` / `.pptx`**：不在 Phase 1；见 F08。
+   - **`.docx` / `.xlsx` / `.pptx`**：不在 Phase 1；见 P1-F08。
    - **每版本单文件**：从 `documents.file_storage_path` 读取字节并解析；写结构化日志（含 `skeleton` 信号）。无独立 `document_files` 表。
    - **`file_metadata.document`**：解析前轻量抽取 PDF/Office 文档属性并 **merge** 进 `documents.file_metadata`（`schema_version=1`）；抽取失败**不**导致 job failed；成功后可用 `document.modified_at` 更新 `file_modified_at`。
 9. **节树（层级）**：
@@ -142,7 +142,7 @@ flowchart LR
     - **同一节**因多个 leaf 命中时去重，只保留最高分一条（结果中同一 `section_id` 至多一次）；
     - `tenant_id` 仅来自调用方上下文，禁止由不可信输入覆盖。
 13. 旧版本失效策略固定为 **`is_latest=false`**；检索只使用 `is_latest=true` 的 leaf，并只返回对应 `is_latest` 节。
-14. **可观测性**：ingest job 成功/失败日志须含 `document_id`、`version`（int）、每源文件的 `parse_route`（Phase 1：`text` | `pymupdf` | `docling`；Phase 2 F08 另增 `docx` | `pptx` | `xlsx`）与 PDF **`skeleton=true|false`**（及 reason）；Settings：`PDF_SKELETON_MIN_TOC`、`PDF_SKELETON_MIN_HEADING_CANDIDATES`、`PDF_FORCE_STRUCTURE`；无骨架辅助门限 `PDF_FAST_*`。
+14. **可观测性**：ingest job 成功/失败日志须含 `document_id`、`version`（int）、每源文件的 `parse_route`（Phase 1：`text` | `pymupdf` | `docling`；Phase 2 P1-F08 另增 `docx` | `pptx` | `xlsx`）与 PDF **`skeleton=true|false`**（及 reason）；Settings：`PDF_SKELETON_MIN_TOC`、`PDF_SKELETON_MIN_HEADING_CANDIDATES`、`PDF_FORCE_STRUCTURE`；无骨架辅助门限 `PDF_FAST_*`。
 
 ## 流水线中间对象（实现约定，非对外 API）
 
@@ -151,7 +151,7 @@ flowchart LR
 | 骨架探测 | TOC / 字号候选 → `has_skeleton`；只读，不写库 |
 | `ParseBlock` | 结构路径中间块：`heading(level)` / `paragraph` / `table` / `image` → Markdown |
 | 解析出口 | 映射为自家节树（非 Docling 原生对象直接下游） |
-| `parse_route` | 单文件解析路径：`text` / `pymupdf` / `docling`（F08：`docx` / `pptx` / `xlsx`）；写结构化日志 |
+| `parse_route` | 单文件解析路径：`text` / `pymupdf` / `docling`（P1-F08：`docx` / `pptx` / `xlsx`）；写结构化日志 |
 | 叶节 | 含 `path`、节全文、`section_index`、text `level`；写入 `document_sections` |
 | `ChunkDraft` | 节内 leaf：`content` + `chunk_index` + `section` 关联（及 `heading_path` / `embedding_text` 等）；写入 `document_chunks` 并 embed |
 
@@ -176,27 +176,27 @@ flowchart LR
 
 | ID | 步骤 | 期望 | 类型 |
 |----|------|------|------|
-| F04-T01 | Given 文档 publish When ingest job 跑完 | Then job=succeeded；`ingest_status=ready`；存在 `is_latest` leaf chunks；embedding 非空；存在对应 `is_latest` sections（含非空 `path` 与节 `content`） | api |
-| F04-T01b | Given 含页的 PDF publish When ingest 成功 | Then `file_metadata.document.page_count` ≥ 1（抽取失败时仍可 succeeded，但本用例使用可抽取样例） | api |
-| F04-T02 | Given `publish_status`=`review` 未 publish When 强行请求索引 | Then 不产生 `is_latest` section/chunk | api |
-| F04-T03 | Given tenant-A 已索引文档 When tenant-B 调用 search 相同 query | Then 0 条 A 的命中 | api |
-| F04-T04 | Given 空 txt publish When 索引 | Then job=succeeded；`ingest_status=ready`；0 section/chunk；search 无命中 | api |
-| F04-T05 | Given `version=1` 已索引 When `version=2` 索引成功 | Then 仅 v2 documents/sections/chunks `is_latest=true`；search 不返回 v1 | api |
-| F04-T06 | Given 已索引文档软删除 When search | Then 无该文档命中（section/chunk `is_latest=false`） | api |
-| F04-T07 | Given 损坏/无法打开文件 When 索引 | Then job=failed；`ingest_status=failed`；无 `is_latest` section/chunk | api |
-| F04-T08 | Given 已索引语料含独特短语 When search 该短语 | Then top-k 命中；返回的 `content` 为节全文且含该短语，`path` 非空 | api |
-| F04-T09 | Given 无文字层 PDF（不 OCR）When 索引 | Then job=succeeded；`ingest_status=ready`；0 section/chunk | api |
-| F04-T10 | Given 含 H1 与两个 H2 且各含独特短语的文档 When 索引 | Then leaf 不跨叶节；两节 `path` 可区分；各短语只出现在对应节 `content`；`section_index` 唯一 | api |
-| F04-T11 | Given 同上 When search 仅出现在 H2-B 的短语 | Then 命中返回 H2-B 节全文与对应 `path`；`content` 不含 H2-A 专属正文 | api |
-| F04-T20 | Given 含 H1/H2/H3 且 H3 含独特短语的文档 When 建节树/索引 | Then 存在 path 含三级（`H1 > H2 > H3`）的叶节；该短语仅在该 H3 节 `content`；不并入 H2 | unit |
-| F04-T12 | Given 同节内多 leaf 均可被同一 query 命中 When search | Then 同一 `section_id` 在结果中至多出现一次 | api |
-| F04-T13 | Given 无骨架、含可提取文字层的 PDF（独特短语）When 解析/索引 | Then `parse_route=pymupdf`；`skeleton=false`；search 可命中该短语 | unit |
-| F04-T14 | Given 无骨架且文字质量不达标（或打开失败）When 解析 | Then fallback Docling；`parse_route=docling` | unit |
-| F04-T15 | （已迁至 F08）Office `.docx` / `.pptx` / `.xlsx` 解析与索引 | 见 [F08](../../phase2/features/F08-office-ooxml.md) | — |
-| F04-T16 | Given 有 TOC/骨架的 PDF When 解析 | Then `skeleton=true`；`parse_route=docling`；导出含多级 heading（及表/图标签若存在） | unit |
-| F04-T17 | Given 判定有骨架但 Docling 不可用 When 索引 | Then job/index failed；不写入「假结构成功」的单节 flat 结果冒充结构路径 | unit |
-| F04-T18 | Given 仅有编号小标题（如 `## 2.1.1` / `## 2.1.2`，无显式父标题）When 建节树 | Then 自动补父级；叶节 `path` 含 `>`（如 `2 > 2.1 > 2.1.1 …`）；正文 `&gt;`/`\_` 已净化 | unit |
-| F04-T19 | Given 叶节 `path` 非空 When 写入 chunk | Then `embedding_text` 以 path 为前缀且含 leaf `content`；向量对 `embedding_text` 计算；`content` 不含强制拼上的 path 前缀 | unit |
-| F04-T22 | Given `# 第二章…` + 编号 `## 2.1` / `## 2.1.1`（章下无导言）When 建节树 | Then 不插入合成 `# 2`；叶节 `path` 以 `第二章…` 开头；可不落库空章行 | unit |
-| F04-T24 | Given Docling 扁平 `## 书名` + `## 第二章…` + `## 2.1` / `## 2.1.1` When 建节树 | Then `第二章` 提升为 H1；不插入合成 `# 2`；叶节 `path` 以 `第二章…` 开头（不以 `2 >` 开头） | unit |
-| F04-T23 | Given 节内长正文 + Markdown 表且总长超过目标 When 切 leaf | Then 在表前/表后切开；表 leaf 含完整表（含表头行）；正文 leaf 不含被横切的半表；纯正文才滑窗 | unit |
+| P1-F04-T01 | Given 文档 publish When ingest job 跑完 | Then job=succeeded；`ingest_status=ready`；存在 `is_latest` leaf chunks；embedding 非空；存在对应 `is_latest` sections（含非空 `path` 与节 `content`） | api |
+| P1-F04-T01b | Given 含页的 PDF publish When ingest 成功 | Then `file_metadata.document.page_count` ≥ 1（抽取失败时仍可 succeeded，但本用例使用可抽取样例） | api |
+| P1-F04-T02 | Given `publish_status`=`review` 未 publish When 强行请求索引 | Then 不产生 `is_latest` section/chunk | api |
+| P1-F04-T03 | Given tenant-A 已索引文档 When tenant-B 调用 search 相同 query | Then 0 条 A 的命中 | api |
+| P1-F04-T04 | Given 空 txt publish When 索引 | Then job=succeeded；`ingest_status=ready`；0 section/chunk；search 无命中 | api |
+| P1-F04-T05 | Given `version=1` 已索引 When `version=2` 索引成功 | Then 仅 v2 documents/sections/chunks `is_latest=true`；search 不返回 v1 | api |
+| P1-F04-T06 | Given 已索引文档软删除 When search | Then 无该文档命中（section/chunk `is_latest=false`） | api |
+| P1-F04-T07 | Given 损坏/无法打开文件 When 索引 | Then job=failed；`ingest_status=failed`；无 `is_latest` section/chunk | api |
+| P1-F04-T08 | Given 已索引语料含独特短语 When search 该短语 | Then top-k 命中；返回的 `content` 为节全文且含该短语，`path` 非空 | api |
+| P1-F04-T09 | Given 无文字层 PDF（不 OCR）When 索引 | Then job=succeeded；`ingest_status=ready`；0 section/chunk | api |
+| P1-F04-T10 | Given 含 H1 与两个 H2 且各含独特短语的文档 When 索引 | Then leaf 不跨叶节；两节 `path` 可区分；各短语只出现在对应节 `content`；`section_index` 唯一 | api |
+| P1-F04-T11 | Given 同上 When search 仅出现在 H2-B 的短语 | Then 命中返回 H2-B 节全文与对应 `path`；`content` 不含 H2-A 专属正文 | api |
+| P1-F04-T20 | Given 含 H1/H2/H3 且 H3 含独特短语的文档 When 建节树/索引 | Then 存在 path 含三级（`H1 > H2 > H3`）的叶节；该短语仅在该 H3 节 `content`；不并入 H2 | unit |
+| P1-F04-T12 | Given 同节内多 leaf 均可被同一 query 命中 When search | Then 同一 `section_id` 在结果中至多出现一次 | api |
+| P1-F04-T13 | Given 无骨架、含可提取文字层的 PDF（独特短语）When 解析/索引 | Then `parse_route=pymupdf`；`skeleton=false`；search 可命中该短语 | unit |
+| P1-F04-T14 | Given 无骨架且文字质量不达标（或打开失败）When 解析 | Then fallback Docling；`parse_route=docling` | unit |
+| P1-F04-T15 | （已迁至 P1-F08）Office `.docx` / `.pptx` / `.xlsx` 解析与索引 | 见 [P1-F08](../../phase2/features/P2-F01-office-ooxml.md) | — |
+| P1-F04-T16 | Given 有 TOC/骨架的 PDF When 解析 | Then `skeleton=true`；`parse_route=docling`；导出含多级 heading（及表/图标签若存在） | unit |
+| P1-F04-T17 | Given 判定有骨架但 Docling 不可用 When 索引 | Then job/index failed；不写入「假结构成功」的单节 flat 结果冒充结构路径 | unit |
+| P1-F04-T18 | Given 仅有编号小标题（如 `## 2.1.1` / `## 2.1.2`，无显式父标题）When 建节树 | Then 自动补父级；叶节 `path` 含 `>`（如 `2 > 2.1 > 2.1.1 …`）；正文 `&gt;`/`\_` 已净化 | unit |
+| P1-F04-T19 | Given 叶节 `path` 非空 When 写入 chunk | Then `embedding_text` 以 path 为前缀且含 leaf `content`；向量对 `embedding_text` 计算；`content` 不含强制拼上的 path 前缀 | unit |
+| P1-F04-T22 | Given `# 第二章…` + 编号 `## 2.1` / `## 2.1.1`（章下无导言）When 建节树 | Then 不插入合成 `# 2`；叶节 `path` 以 `第二章…` 开头；可不落库空章行 | unit |
+| P1-F04-T24 | Given Docling 扁平 `## 书名` + `## 第二章…` + `## 2.1` / `## 2.1.1` When 建节树 | Then `第二章` 提升为 H1；不插入合成 `# 2`；叶节 `path` 以 `第二章…` 开头（不以 `2 >` 开头） | unit |
+| P1-F04-T23 | Given 节内长正文 + Markdown 表且总长超过目标 When 切 leaf | Then 在表前/表后切开；表 leaf 含完整表（含表头行）；正文 leaf 不含被横切的半表；纯正文才滑窗 | unit |
