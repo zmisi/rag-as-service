@@ -7,7 +7,7 @@ Feature ID 全局格式：`P{phase}-F{nn}-{slug}`（见 constraints §8.0）。
 |-------|------|------|------|--------------|
 | Phase 1 | Email 注册/登录、租户子域、文档 admin、索引、RAG Agent | 进行中 | [phase1/](phase1/) | [phase1/01-feature-list.md](phase1/01-feature-list.md) |
 | Phase 2 | Office OOXML、admin 文件夹树与预览、对外 API、Embed Widget、Portal FAQ / 壳 | Spec/实现进行中 | [phase2/](phase2/) | [phase2/01-feature-list.md](phase2/01-feature-list.md) |
-| Phase 3 | 生产上线主 Flow、索引质量增强、Portal Cursor 风搜索 | Spec 进行中 | [phase3/](phase3/) | [phase3/01-feature-list.md](phase3/01-feature-list.md) |
+| Phase 3 | 生产上线主 Flow、索引质量增强、Portal Cursor 风搜索、Debug Page | Spec 进行中 | [phase3/](phase3/) | [phase3/01-feature-list.md](phase3/01-feature-list.md) |
 | Phase 4 | 微信登录、SOP 强制验证门禁 | 预留 | 落地时新建 | 落地时新建 |
 
 ```mermaid

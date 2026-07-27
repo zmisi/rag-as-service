@@ -125,6 +125,7 @@ alwaysApply: true
 - 生产上线与主 Flow 验收（P3-F01）
 - 索引质量增强：可选 OCR、表格/标题（P3-F02）
 - Portal 搜索 Cursor 风（P3-F03）
+- Admin Debug Page：纯检索 + Agent 透视（P3-F04）
 
 ### Phase 4 预留
 

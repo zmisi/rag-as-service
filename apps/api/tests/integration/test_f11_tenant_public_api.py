@@ -11,7 +11,7 @@ from rag_api.agent.constants import TOOL_SEARCH_KNOWLEDGE
 from rag_api.api.dependencies import get_llm_client
 from rag_api.clients.llm import LlmResult, ScriptedLlmClient, ToolCall
 from rag_api.db.models import ApiKey
-from rag_api.indexing.search import ChunkHit, FakeKnowledgeSearcher
+from rag_api.ingestion.search import ChunkHit, FakeKnowledgeSearcher
 from rag_api.services.api_keys import hash_api_key_secret
 from rag_api.services.rate_limit import api_key_limiter
 from tests.helpers import tenant_host_headers

@@ -19,7 +19,7 @@ from rag_api.api.schemas.public_api import (
     PublicSearchResponse,
 )
 from rag_api.clients.llm import LlmClient
-from rag_api.indexing.search import KnowledgeSearcher
+from rag_api.ingestion.search import KnowledgeSearcher
 from rag_api.services import conversations as conv_svc
 
 router = APIRouter(prefix="/api/v1", tags=["public-api"])

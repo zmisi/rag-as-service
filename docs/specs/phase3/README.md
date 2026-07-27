@@ -19,5 +19,6 @@ Phase 3 产品 Spec。Feature 是最小交付单位；**验收只看该 Feature 
 | 生产上线与主 Flow 验收 | P3-F01 |
 | 索引质量增强（OCR / 结构） | P3-F02 |
 | Portal 搜索 Cursor 风 | P3-F03 |
+| Debug Page（纯检索 / Agent 透视） | P3-F04 |
 
 微信登录、SOP 强制验证门禁 → **Phase 4**（见 phase list）。
