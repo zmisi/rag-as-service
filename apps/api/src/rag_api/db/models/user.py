@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import Integer, Text, text
+from sqlalchemy import Boolean, Integer, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
 
@@ -21,6 +21,9 @@ class User(TimestampMixin, Base):
     user_name: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
     email: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    must_change_password: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false"), default=False
+    )
     active: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default=text("1")
     )

@@ -23,6 +23,7 @@ class DocumentSummaryOut(BaseModel):
     ingest_status: str
     version: int
     is_latest: bool
+    folder_id: UUID | None = None
     create_at: datetime
     update_at: datetime
 
@@ -67,6 +68,7 @@ def document_to_summary(doc: Document) -> DocumentSummaryOut:
         ingest_status=doc.ingest_status,
         version=doc.version_number,
         is_latest=doc.is_latest,
+        folder_id=doc.folder_id,
         create_at=doc.create_at,
         update_at=doc.update_at,
     )

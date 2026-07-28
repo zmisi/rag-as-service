@@ -23,6 +23,8 @@ class LoginOutcome:
     tenant_name: str
     session: SessionIssueResult
     redirect_url: str
+    must_change_password: bool
+    change_password_url: str | None = None
 
     @property
     def subdomain(self) -> str:
@@ -78,6 +80,12 @@ class LoginService:
         self._session.commit()
 
         redirect_url = f"https://{tenant.tenant_name}.{self._settings.apex_host}/"
+        change_password_url = None
+        if user.must_change_password:
+            change_password_url = (
+                f"https://{self._settings.apex_host}/change-password"
+                f"?next={redirect_url}"
+            )
         logger.info(
             "login_success",
             extra={
@@ -90,4 +98,6 @@ class LoginService:
             tenant_name=tenant.tenant_name,
             session=session_issue,
             redirect_url=redirect_url,
+            must_change_password=user.must_change_password,
+            change_password_url=change_password_url,
         )

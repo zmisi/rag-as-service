@@ -6,6 +6,7 @@ from rag_api.api.dependencies.auth import (
     get_session_user,
     parse_subdomain,
     require_known_host,
+    require_tenant_admin,
     require_tenant_member,
 )
 from rag_api.api.dependencies.db import get_db
@@ -30,6 +31,7 @@ __all__ = [
     "require_apex_host",
     "require_known_host",
     "require_public_api_key",
+    "require_tenant_admin",
     "require_tenant_member",
     "require_widget_site_key",
 ]

@@ -87,35 +87,6 @@ export function DocEditor({
 
       <section className="doc-form">
         <div className="doc-field">
-          <label htmlFor="doc-title">文档标题</label>
-          <input
-            id="doc-title"
-            type="text"
-            placeholder="例如：产品使用手册 v2.0"
-            value={title}
-            disabled={readOnly || busy}
-            onChange={(e) => onTitleChange(e.target.value)}
-          />
-        </div>
-
-        <div className="doc-field">
-          <label htmlFor="doc-tag">文档分类</label>
-          <select
-            id="doc-tag"
-            value={tag}
-            disabled={readOnly || busy}
-            onChange={(e) => onTagChange(e.target.value)}
-          >
-            <option value="">请选择…</option>
-            {TAG_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label} — {opt.description}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="doc-field">
           <span className="doc-field-label">源文件</span>
           {!readOnly ? (
             <>
@@ -127,6 +98,9 @@ export function DocEditor({
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (file) {
+                    if (!title.trim()) {
+                      onTitleChange(file.name);
+                    }
                     onUploadFile(file);
                     e.target.value = "";
                   }
@@ -156,6 +130,35 @@ export function DocEditor({
           ) : (
             <p className="doc-hint muted">尚未上传文件</p>
           )}
+        </div>
+
+        <div className="doc-field">
+          <label htmlFor="doc-title">文档标题</label>
+          <input
+            id="doc-title"
+            type="text"
+            placeholder="例如：产品使用手册 v2.0"
+            value={title}
+            disabled={readOnly || busy}
+            onChange={(e) => onTitleChange(e.target.value)}
+          />
+        </div>
+
+        <div className="doc-field">
+          <label htmlFor="doc-tag">文档分类</label>
+          <select
+            id="doc-tag"
+            value={tag}
+            disabled={readOnly || busy}
+            onChange={(e) => onTagChange(e.target.value)}
+          >
+            <option value="">请选择…</option>
+            {TAG_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label} — {opt.description}
+              </option>
+            ))}
+          </select>
         </div>
 
         {validationErrors.length > 0 ? (

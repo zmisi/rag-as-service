@@ -6,6 +6,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 from rag_api.db.models.base import RAG_SCHEMA, Base, TimestampMixin
 
 ROLE_OWNER = "owner"
+ROLE_ADMIN = "admin"
+ROLE_MEMBER = "member"
 MEMBER_ACTIVE = 1
 MEMBER_INACTIVE = 0
 
@@ -21,7 +23,10 @@ class TenantMember(TimestampMixin, Base):
             "member_name",
             name="uk_tenant_members_tenant_id_member_name",
         ),
-        CheckConstraint("role IN ('owner')", name="tenant_members_role_chk"),
+        CheckConstraint(
+            "role IN ('owner', 'admin', 'member')",
+            name="tenant_members_role_chk",
+        ),
         CheckConstraint("active IN (0, 1)", name="tenant_members_active_chk"),
     )
 

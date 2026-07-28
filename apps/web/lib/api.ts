@@ -57,6 +57,25 @@ export async function fetchBackend(
   });
 }
 
+export type AuthMe = {
+  user_id: string;
+  email: string;
+  tenant_id?: string | null;
+  subdomain?: string | null;
+  role?: "owner" | "admin" | "member" | null;
+  must_change_password?: boolean;
+};
+
+export async function getAuthMe() {
+  const response = await fetchBackend("/api/v1/auth/me", {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) {
+    throw new Error(`无法获取当前用户信息: ${response.status}`);
+  }
+  return (await response.json()) as AuthMe;
+}
+
 export type ConversationStatus = "active" | "archived";
 
 export type Conversation = {
@@ -416,6 +435,52 @@ export function saveDocument(
   });
 }
 
+export function deleteDocument(id: string) {
+  return docApi<void>(`/documents/${id}`, { method: "DELETE" });
+}
+
+export async function downloadDocument(id: string, fallbackName = "download") {
+  const res = await fetch(`/backend/v1/documents/${id}/download`, {
+    method: "GET",
+    credentials: "include",
+    headers: tenantHeaders(),
+  });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const body = await res.json();
+      if (typeof body?.detail === "string") detail = body.detail;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail || "下载失败");
+  }
+  const blob = await res.blob();
+  let filename = fallbackName;
+  const cd = res.headers.get("Content-Disposition");
+  if (cd) {
+    const utf8 = /filename\*=UTF-8''([^;]+)/i.exec(cd);
+    const plain = /filename="?([^";]+)"?/i.exec(cd);
+    if (utf8?.[1]) {
+      try {
+        filename = decodeURIComponent(utf8[1]);
+      } catch {
+        filename = utf8[1];
+      }
+    } else if (plain?.[1]) {
+      filename = plain[1];
+    }
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export async function uploadDocumentFile(id: string, file: File) {
   const form = new FormData();
   form.append("file", file);
@@ -425,9 +490,14 @@ export async function uploadDocumentFile(id: string, file: File) {
   });
 }
 
-export function submitForReview(id: string) {
+export function submitForReview(
+  id: string,
+  body?: { reviewer_user_id?: string | null; review_comment?: string },
+) {
   return docApi<DocDetail>(`/documents/${id}/submit-review`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? {}),
   });
 }
 
@@ -441,6 +511,174 @@ export function newDocumentVersion(id: string) {
 
 export function getIngestStatus(id: string) {
   return docApi<IngestJobStatus | null>(`/documents/${id}/ingest-status`);
+}
+
+/* ---- P2-F02 Folder tree (admin) ---- */
+
+export type FolderVisibility = "public" | "partial" | "private";
+
+export type FolderNode = {
+  folder_id: string;
+  parent_id: string | null;
+  name: string;
+  description?: string;
+  visibility?: FolderVisibility;
+};
+
+export type FolderLayerDoc = {
+  doc_id: string;
+  doc_name: string;
+  publish_status: string;
+  ingest_status: string;
+  status_label: string;
+  folder_id: string | null;
+  create_at: string | null;
+  uploader?: string | null;
+  reviewer?: string | null;
+  reviewed_at?: string | null;
+  review_comment?: string | null;
+};
+
+export type FolderLayer = {
+  folder_id: string | null;
+  breadcrumb: FolderNode[];
+  folders: FolderNode[];
+  documents: FolderLayerDoc[];
+};
+
+export type ReviewTask = FolderLayerDoc;
+
+export type ReviewerOption = {
+  user_id: string;
+  name: string;
+  email: string;
+};
+
+export function listFolderTree() {
+  return api<FolderNode[]>("/folders/tree");
+}
+
+export function listFolderLayer(folderId?: string | null) {
+  const q = folderId ? `?folder_id=${folderId}` : "";
+  return api<FolderLayer>(`/folders/list${q}`);
+}
+
+export function listFolderReviewers() {
+  return api<ReviewerOption[]>("/folders/reviewers");
+}
+
+export function listReviewTasks() {
+  return api<ReviewTask[]>("/folders/review-tasks");
+}
+
+export function createFolder(body: {
+  name: string;
+  parent_id?: string | null;
+  description?: string;
+  visibility?: FolderVisibility;
+}) {
+  return api<FolderNode>("/folders", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function updateFolder(
+  id: string,
+  body: {
+    name?: string;
+    description?: string;
+    visibility?: FolderVisibility;
+  },
+) {
+  return api<FolderNode>(`/folders/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export function renameFolder(id: string, name: string) {
+  return updateFolder(id, { name });
+}
+
+export function moveFolder(id: string, parentId: string | null) {
+  return api<FolderNode>(`/folders/${id}/move`, {
+    method: "PATCH",
+    body: JSON.stringify({ parent_id: parentId }),
+  });
+}
+
+export function deleteFolder(id: string) {
+  return api<void>(`/folders/${id}`, { method: "DELETE" });
+}
+
+export function moveDocumentToFolder(docId: string, folderId: string | null) {
+  return api<{ ok: boolean }>(`/folders/documents/${docId}/move`, {
+    method: "PATCH",
+    body: JSON.stringify({ folder_id: folderId }),
+  });
+}
+
+export type TenantMemberRole = "member" | "admin" | "owner";
+
+export type TenantMember = {
+  member_id: string;
+  user_id: string;
+  email: string;
+  member_name: string;
+  role: TenantMemberRole;
+  active: number;
+};
+
+export type CreateMemberResult = {
+  member_id: string;
+  user_id: string;
+  email: string;
+  member_name: string;
+  role: TenantMemberRole;
+  temporary_password: string | null;
+  must_change_password: boolean;
+};
+
+export function listTenantMembers() {
+  return api<TenantMember[]>("/members");
+}
+
+export function createTenantMember(body: {
+  member_name: string;
+  email: string;
+  role: Exclude<TenantMemberRole, "owner">;
+}) {
+  return api<CreateMemberResult>("/members", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function changePassword(newPassword: string) {
+  return fetchBackend("/api/v1/auth/change-password", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({ new_password: newPassword }),
+  }).then(async (res) => {
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        const body = await res.json();
+        if (typeof body?.detail?.message === "string") {
+          detail = body.detail.message;
+        } else if (typeof body?.detail === "string") {
+          detail = body.detail;
+        }
+      } catch {
+        /* ignore */
+      }
+      throw new Error(detail || "修改密码失败");
+    }
+  });
 }
 
 /* ---- F12 Embed Widget site keys (admin) ---- */
