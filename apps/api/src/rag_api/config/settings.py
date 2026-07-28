@@ -129,6 +129,8 @@ class Settings(BaseSettings):
         alias="PDF_SKELETON_MIN_HEADING_CANDIDATES",
     )
     pdf_force_structure: bool = Field(default=False, alias="PDF_FORCE_STRUCTURE")
+    # P3-F04: Admin Debug page + /v1/admin/debug/* (default off in production).
+    enable_admin_debug: bool = Field(default=False, alias="ENABLE_ADMIN_DEBUG")
 
 
 @lru_cache

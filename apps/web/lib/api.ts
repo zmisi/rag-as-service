@@ -736,3 +736,52 @@ export function revokeWidgetSiteKey(id: string) {
 export function getWidgetSnippet(id: string) {
   return api<WidgetSnippet>(`/admin/widget-site-keys/${id}/snippet`);
 }
+
+/* ---- P3-F04 Admin Debug ---- */
+
+export type DebugSearchHit = {
+  document_id: string;
+  chunk_id: string;
+  section_id?: string;
+  path?: string;
+  content: string;
+  score: number;
+};
+
+export type DebugSearchResponse = {
+  hits: DebugSearchHit[];
+};
+
+export type DebugLlmCall = {
+  step: number;
+  request_summary: Record<string, unknown>;
+  response_summary: Record<string, unknown>;
+};
+
+export type AgentDebugPayload = {
+  context_messages: Record<string, unknown>[];
+  top_k_hits: DebugSearchHit[];
+  history: Record<string, unknown>[];
+  llm_calls: DebugLlmCall[];
+};
+
+export type DebugChatResponse = TurnReply & {
+  debug: AgentDebugPayload;
+};
+
+export function postDebugSearch(body: { query: string; top_k?: number }) {
+  return api<DebugSearchResponse>("/admin/debug/search", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function postDebugChat(body: {
+  content: string;
+  conversation_id?: string | null;
+}) {
+  return api<DebugChatResponse>("/admin/debug/chat", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}

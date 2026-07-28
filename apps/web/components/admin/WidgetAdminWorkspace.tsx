@@ -114,6 +114,8 @@ export function WidgetAdminWorkspace() {
           <p className="widget-admin-nav">
             <Link href="/admin">知识库</Link>
             <span aria-hidden> / </span>
+            <Link href="/admin/debug">Debug</Link>
+            <span aria-hidden> / </span>
             <span>Embed Widget</span>
           </p>
           <h1>Embed Widget Site Keys</h1>

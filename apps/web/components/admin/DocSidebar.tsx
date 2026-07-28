@@ -139,6 +139,11 @@ export function DocSidebar({
         </div>
         <h1 className="sidebar-title kb-brand-title">RAG As Service</h1>
       </div>
+      <p className="sidebar-widget-link">
+        <a href="/admin/widget">Embed Widget</a>
+        {" · "}
+        <a href="/admin/debug">Debug</a>
+      </p>
 
       <input
         className="doc-search"
