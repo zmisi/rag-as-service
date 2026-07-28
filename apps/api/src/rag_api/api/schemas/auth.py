@@ -20,6 +20,8 @@ class LoginRequest(BaseModel):
 class LoginResponse(BaseModel):
     subdomain: str
     redirect_url: str
+    must_change_password: bool = False
+    change_password_url: str | None = None
 
 
 class MeResponse(BaseModel):
@@ -28,6 +30,11 @@ class MeResponse(BaseModel):
     tenant_id: str | None = None
     subdomain: str | None = None
     role: str | None = None
+    must_change_password: bool = False
+
+
+class ChangePasswordRequest(BaseModel):
+    new_password: str = Field(min_length=8)
 
 
 class ErrorResponse(BaseModel):

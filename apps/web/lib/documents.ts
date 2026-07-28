@@ -20,6 +20,7 @@ export type DocSummary = {
   ingest_status?: IngestStatus;
   version: number;
   is_latest?: boolean;
+  folder_id?: string | null;
   create_at: string;
   update_at: string;
 };

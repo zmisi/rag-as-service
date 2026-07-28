@@ -28,6 +28,15 @@ export default function AdminWidgetPage() {
           if (!cancelled) setError("无法验证登录状态");
           return;
         }
+        const body = (await response.json()) as {
+          must_change_password?: boolean;
+        };
+        if (body.must_change_password) {
+          window.location.href = resolveMainSiteUrl(
+            `/change-password?next=${encodeURIComponent(window.location.href)}`,
+          );
+          return;
+        }
         if (!cancelled) setReady(true);
       } catch {
         if (!cancelled) setError("网络错误，请稍后重试");

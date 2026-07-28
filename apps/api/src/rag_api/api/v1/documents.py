@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import Response
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from rag_api.api.dependencies import AuthContext, require_tenant_member
@@ -26,6 +29,13 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 
 def _storage() -> StorageService:
     return StorageService()
+
+
+class SubmitReviewRequest(BaseModel):
+    """Review submission metadata."""
+
+    reviewer_user_id: UUID | None = None
+    review_comment: str | None = None
 
 
 @router.post("", response_model=DocumentSummaryOut, status_code=status.HTTP_201_CREATED)
@@ -127,11 +137,16 @@ async def upload_file(
 @router.post("/{document_id}/submit-review", response_model=DocumentDetailOut)
 def submit_for_review(
     document_id: UUID,
+    body: SubmitReviewRequest | None = None,
     db: Session = Depends(get_db),
     auth: AuthContext = Depends(require_tenant_member),
 ) -> DocumentDetailOut:
     doc = doc_svc.submit_for_review(
-        db, document_id=document_id, tenant_id=auth.tenant_id
+        db,
+        document_id=document_id,
+        tenant_id=auth.tenant_id,
+        reviewer_user_id=body.reviewer_user_id if body else None,
+        review_comment=body.review_comment if body else None,
     )
     return document_to_detail(doc)
 
@@ -143,7 +158,10 @@ def publish_document(
     auth: AuthContext = Depends(require_tenant_member),
 ) -> DocumentDetailOut:
     result = doc_svc.publish_document(
-        db, document_id=document_id, tenant_id=auth.tenant_id
+        db,
+        document_id=document_id,
+        tenant_id=auth.tenant_id,
+        reviewer_user_id=auth.user_id,
     )
     return document_to_detail(
         result.document,
@@ -176,6 +194,42 @@ def ingest_status(
     if job is None:
         return None
     return ingest_job_to_out(job)
+
+
+@router.get("/{document_id}/download")
+def download_document(
+    document_id: UUID,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(require_tenant_member),
+    storage: StorageService = Depends(_storage),
+) -> Response:
+    """Download the source file attached to a document version."""
+    doc = doc_svc.get_document_detail(
+        db, document_id=document_id, tenant_id=auth.tenant_id
+    )
+    if not doc.file_storage_path or not (doc.file_name or "").strip():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document has no uploaded file",
+        )
+    try:
+        data = storage.read_bytes(doc.file_storage_path)
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Stored file not found",
+        ) from exc
+    filename = doc.file_name or "download"
+    ascii_name = filename.encode("ascii", "ignore").decode() or "download"
+    disposition = (
+        f'attachment; filename="{ascii_name}"; '
+        f"filename*=UTF-8''{quote(filename)}"
+    )
+    return Response(
+        content=data,
+        media_type=doc.file_content_type or "application/octet-stream",
+        headers={"Content-Disposition": disposition},
+    )
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)

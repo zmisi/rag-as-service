@@ -4,7 +4,7 @@
 
 | 字段 | 值 |
 |------|-----|
-| **Status** | `draft` |
+| **Status** | `approved` |
 | **Owner** | |
 | **Approved by** | |
 | **Approved at** | |
@@ -14,6 +14,7 @@
 ## 范围
 
 - 租户内文件夹 CRUD（创建、重命名、移动、删除）
+- 知识库创建表单可填写：名称、描述、可见范围（存元数据；可见范围不实现成员级 ACL）
 - 文档 `folder_id`（可空 = 根目录）
 - Admin 树形列表 + 面包屑；按当前文件夹列出子夹与文档
 - 跨租户隔离
@@ -52,7 +53,7 @@ flowchart TD
 
 | 实体 | 关键字段 / 约束 |
 |------|----------------|
-| folder | `id`, `tenant_id`, `parent_id` NULL=根, `name`, 唯一 `(tenant_id, parent_id, lower(name))` |
+| folder | `id`, `tenant_id`, `parent_id` NULL=根, `name`, `description`（可空文案）, `visibility`（`public` / `partial` / `private`，仅元数据，**不**做文件夹 ACL 强制）, 唯一 `(tenant_id, parent_id, lower(name))` |
 | documents（版本组或 latest 视图） | 增加 `folder_id` NULL=根；FK → folder，同租户 |
 
 ## Test Cases

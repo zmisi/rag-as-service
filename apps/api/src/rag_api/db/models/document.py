@@ -62,6 +62,16 @@ class Document(TimestampMixin, Base):
         ForeignKey(f"{RAG_SCHEMA}.users.user_id", ondelete="RESTRICT"),
         nullable=False,
     )
+    reviewed_by: Mapped[Optional[UUID]] = mapped_column(
+        ForeignKey(f"{RAG_SCHEMA}.users.user_id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    review_comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    folder_id: Mapped[Optional[UUID]] = mapped_column(
+        ForeignKey(f"{RAG_SCHEMA}.folders.folder_id", ondelete="SET NULL"),
+        nullable=True,
+    )
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     ingest_jobs: Mapped[list[IngestJob]] = relationship(

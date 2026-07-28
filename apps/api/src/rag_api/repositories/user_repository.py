@@ -25,6 +25,7 @@ class UserRepository:
         password_hash: str,
         user_name: str,
         *,
+        must_change_password: bool = False,
         active: int = USER_ACTIVE,
     ) -> User:
         """Insert a new user account and return the flushed row."""
@@ -32,8 +33,23 @@ class UserRepository:
             email=email,
             password_hash=password_hash,
             user_name=user_name,
+            must_change_password=must_change_password,
             active=active,
         )
+        self._session.add(user)
+        self._session.flush()
+        return user
+
+    def update_password(
+        self,
+        user: User,
+        *,
+        password_hash: str,
+        must_change_password: bool,
+    ) -> User:
+        """Persist a password change and return the updated row."""
+        user.password_hash = password_hash
+        user.must_change_password = must_change_password
         self._session.add(user)
         self._session.flush()
         return user

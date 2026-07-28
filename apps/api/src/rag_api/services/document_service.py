@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -12,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from rag_api.config import get_settings
 from rag_api.db.models import Document, IngestJob
+from rag_api.db.models.tenant_member import TenantMember
 from rag_api.domain.documents.constants import (
     MAX_FILE_BYTES,
     content_sha256,
@@ -197,6 +199,8 @@ def submit_for_review(
     *,
     document_id: UUID,
     tenant_id: UUID,
+    reviewer_user_id: UUID | None = None,
+    review_comment: str | None = None,
 ) -> Document:
     """Validate draft fields and move document to review status."""
     doc = _get_document(db, document_id=document_id, tenant_id=tenant_id)
@@ -211,7 +215,21 @@ def submit_for_review(
     if not doc.file_storage_path or not (doc.file_name or "").strip():
         raise HTTPException(status_code=400, detail="At least one file is required")
 
+    if reviewer_user_id is not None:
+        member = db.scalar(
+            select(TenantMember).where(
+                TenantMember.tenant_id == tenant_id,
+                TenantMember.user_id == reviewer_user_id,
+                TenantMember.active == 1,
+            )
+        )
+        if member is None:
+            raise HTTPException(status_code=400, detail="Reviewer is not a tenant member")
+
     doc.publish_status = "review"
+    doc.reviewed_by = reviewer_user_id
+    doc.reviewed_at = None
+    doc.review_comment = (review_comment or "").strip() or None
     db.commit()
     db.refresh(doc)
     return doc
@@ -263,6 +281,7 @@ def publish_document(
     *,
     document_id: UUID,
     tenant_id: UUID,
+    reviewer_user_id: UUID,
 ) -> PublishResult:
     """Publish a review document, enqueue ingest, and optionally run sync ingest."""
     doc = _get_document(db, document_id=document_id, tenant_id=tenant_id)
@@ -294,6 +313,9 @@ def publish_document(
     doc.publish_status = "published"
     doc.ingest_status = "pending"
     doc.error_message = None
+    if doc.reviewed_by is None:
+        doc.reviewed_by = reviewer_user_id
+    doc.reviewed_at = datetime.utcnow()
 
     job = IngestJob(
         tenant_id=tenant_id,
@@ -349,6 +371,10 @@ def new_version(
         ingest_status="pending",
         version_number=new_ver,
         is_latest=True,
+        reviewed_by=None,
+        reviewed_at=None,
+        review_comment=None,
+        folder_id=old.folder_id,
         file_type=old.file_type,
         file_storage_path=old.file_storage_path,
         file_name=old.file_name,

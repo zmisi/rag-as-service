@@ -36,9 +36,17 @@ export function LoginForm() {
       });
 
       if (response.status === 200) {
-        const body = (await response.json()) as { redirect_url?: string };
-        if (body.redirect_url) {
-          window.location.href = resolvePostRegistrationUrl(body.redirect_url);
+        const body = (await response.json()) as {
+          redirect_url?: string;
+          change_password_url?: string | null;
+          must_change_password?: boolean;
+        };
+        const target =
+          body.must_change_password && body.change_password_url
+            ? body.change_password_url
+            : body.redirect_url;
+        if (target) {
+          window.location.href = resolvePostRegistrationUrl(target);
           return;
         }
       }

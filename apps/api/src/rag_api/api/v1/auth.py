@@ -14,6 +14,7 @@ from rag_api.api.dependencies.auth import (
 from rag_api.api.dependencies.db import get_db
 from rag_api.api.dependencies.tenancy import require_apex_host
 from rag_api.api.schemas.auth import (
+    ChangePasswordRequest,
     ErrorResponse,
     LoginRequest,
     LoginResponse,
@@ -24,6 +25,8 @@ from rag_api.api.schemas.auth import (
 from rag_api.config import Settings, get_settings
 from rag_api.core.exceptions import LoginError, RegistrationError
 from rag_api.db.models import Tenant, TenantMember, User
+from rag_api.domain.identity.password import hash_password
+from rag_api.repositories.user_repository import UserRepository
 from rag_api.services.login_service import LoginService
 from rag_api.services.registration_service import RegistrationService
 from rag_api.services.session_service import SessionService
@@ -127,7 +130,10 @@ def login(
         ) from exc
 
     if _wants_redirect(request):
-        redirect = RedirectResponse(url=outcome.redirect_url, status_code=302)
+        redirect = RedirectResponse(
+            url=outcome.change_password_url or outcome.redirect_url,
+            status_code=302,
+        )
         apply_session_cookie(redirect, token=outcome.session.token, settings=settings)
         return redirect
 
@@ -136,6 +142,8 @@ def login(
         content=LoginResponse(
             subdomain=outcome.subdomain,
             redirect_url=outcome.redirect_url,
+            must_change_password=outcome.must_change_password,
+            change_password_url=outcome.change_password_url,
         ).model_dump(),
     )
     apply_session_cookie(json_response, token=outcome.session.token, settings=settings)
@@ -172,7 +180,11 @@ def auth_me(
     raw_host = _host_header(request)
     subdomain = parse_subdomain(raw_host)
     if subdomain is None:
-        return MeResponse(user_id=str(user.user_id), email=user.email)
+        return MeResponse(
+            user_id=str(user.user_id),
+            email=user.email,
+            must_change_password=user.must_change_password,
+        )
 
     tenant = db.scalar(select(Tenant).where(Tenant.tenant_name == subdomain))
     if tenant is None:
@@ -193,4 +205,22 @@ def auth_me(
         tenant_id=str(tenant.tenant_id),
         subdomain=tenant.tenant_name,
         role=member.role,
+        must_change_password=user.must_change_password,
     )
+
+
+@router.post("/change-password", status_code=204)
+def change_password(
+    body: ChangePasswordRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_session_user),
+):
+    """Update the current user's password and clear the first-login flag."""
+    repository = UserRepository(db)
+    repository.update_password(
+        user,
+        password_hash=hash_password(body.new_password),
+        must_change_password=False,
+    )
+    db.commit()
+    return Response(status_code=204)

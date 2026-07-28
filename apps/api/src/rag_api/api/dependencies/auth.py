@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from rag_api.api.dependencies.db import get_db
 from rag_api.config import Settings, get_settings
-from rag_api.db.models import Tenant, TenantMember, User
+from rag_api.db.models import ROLE_ADMIN, ROLE_OWNER, Tenant, TenantMember, User
 from rag_api.services.session_service import SessionService
 
 _HOST_SUBDOMAIN_RE = re.compile(
@@ -31,6 +31,7 @@ class AuthContext:
     tenant_id: UUID
     email: str
     subdomain: str
+    role: str
 
 
 def hostname_from_host_header(host_header: str) -> str:
@@ -234,4 +235,14 @@ def require_tenant_member(
         tenant_id=tenant.tenant_id,
         email=user.email,
         subdomain=tenant.tenant_name,
+        role=member.role,
     )
+
+
+def require_tenant_admin(
+    auth: AuthContext = Depends(require_tenant_member),
+) -> AuthContext:
+    """Ensure the authenticated member can manage tenant permissions."""
+    if auth.role not in {ROLE_OWNER, ROLE_ADMIN}:
+        raise HTTPException(status_code=403, detail="Admin role required")
+    return auth
