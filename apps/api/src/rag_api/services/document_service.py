@@ -282,6 +282,7 @@ def publish_document(
     document_id: UUID,
     tenant_id: UUID,
     reviewer_user_id: UUID,
+    review_comment: str | None = None,
 ) -> PublishResult:
     """Publish a review document, enqueue ingest, and optionally run sync ingest."""
     doc = _get_document(db, document_id=document_id, tenant_id=tenant_id)
@@ -316,6 +317,9 @@ def publish_document(
     if doc.reviewed_by is None:
         doc.reviewed_by = reviewer_user_id
     doc.reviewed_at = datetime.utcnow()
+    comment = (review_comment or "").strip()
+    if comment:
+        doc.review_comment = comment
 
     job = IngestJob(
         tenant_id=tenant_id,
@@ -336,6 +340,57 @@ def publish_document(
             pass
         db.refresh(doc)
     return PublishResult(document=doc)
+
+
+def reject_document(
+    db: Session,
+    *,
+    document_id: UUID,
+    tenant_id: UUID,
+    reviewer_user_id: UUID,
+    review_comment: str | None = None,
+) -> Document:
+    """Reject a review document back to draft with reviewer comment."""
+    doc = _get_document(db, document_id=document_id, tenant_id=tenant_id)
+    if doc.publish_status != "review":
+        raise HTTPException(status_code=409, detail="Only review documents can be rejected")
+
+    comment = (review_comment or "").strip()
+    if not comment:
+        raise HTTPException(status_code=400, detail="Review comment is required when rejecting")
+
+    doc.publish_status = "draft"
+    doc.reviewed_by = reviewer_user_id
+    doc.reviewed_at = datetime.utcnow()
+    doc.review_comment = comment
+    db.commit()
+    db.refresh(doc)
+    return doc
+
+
+def approve_document(
+    db: Session,
+    *,
+    document_id: UUID,
+    tenant_id: UUID,
+    reviewer_user_id: UUID,
+    review_comment: str | None = None,
+) -> Document:
+    """Approve a review document; keep review status as pending publish."""
+    doc = _get_document(db, document_id=document_id, tenant_id=tenant_id)
+    if doc.publish_status != "review":
+        raise HTTPException(status_code=409, detail="Only review documents can be approved")
+    if doc.reviewed_at is not None:
+        raise HTTPException(status_code=409, detail="Document already approved")
+
+    doc.reviewed_by = reviewer_user_id
+    doc.reviewed_at = datetime.utcnow()
+    comment = (review_comment or "").strip()
+    if comment:
+        doc.review_comment = comment
+    db.commit()
+    db.refresh(doc)
+    return doc
 
 
 def new_version(

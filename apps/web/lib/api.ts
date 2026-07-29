@@ -481,6 +481,38 @@ export async function downloadDocument(id: string, fallbackName = "download") {
   URL.revokeObjectURL(url);
 }
 
+export type DocumentPreview = {
+  blobUrl: string;
+  contentType: string;
+  kind: "pdf" | "html" | "text" | "other";
+};
+
+export async function fetchDocumentPreview(id: string): Promise<DocumentPreview> {
+  const res = await fetch(`/backend/v1/documents/${id}/preview`, {
+    method: "GET",
+    credentials: "include",
+    headers: tenantHeaders(),
+  });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const body = await res.json();
+      if (typeof body?.detail === "string") detail = body.detail;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail || "预览失败");
+  }
+  const contentType = (res.headers.get("Content-Type") || "").toLowerCase();
+  const blob = await res.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  let kind: DocumentPreview["kind"] = "other";
+  if (contentType.includes("pdf")) kind = "pdf";
+  else if (contentType.includes("html")) kind = "html";
+  else if (contentType.includes("text")) kind = "text";
+  return { blobUrl, contentType, kind };
+}
+
 export async function uploadDocumentFile(id: string, file: File) {
   const form = new FormData();
   form.append("file", file);
@@ -501,8 +533,26 @@ export function submitForReview(
   });
 }
 
-export function publishDocument(id: string) {
-  return docApi<DocDetail>(`/documents/${id}/publish`, { method: "POST" });
+export function publishDocument(
+  id: string,
+  body?: { review_comment?: string },
+) {
+  return docApi<DocDetail>(`/documents/${id}/publish`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? {}),
+  });
+}
+
+export function completeDocumentReview(
+  id: string,
+  body: { decision: "approve" | "reject"; review_comment?: string },
+) {
+  return docApi<DocDetail>(`/documents/${id}/complete-review`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 }
 
 export function newDocumentVersion(id: string) {

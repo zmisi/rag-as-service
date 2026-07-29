@@ -8,6 +8,8 @@ import { CreateKnowledgeBaseModal } from "@/components/admin/CreateKnowledgeBase
 import { DocEditor } from "@/components/admin/DocEditor";
 import { DocSidebar } from "@/components/admin/DocSidebar";
 import { FolderBrowser } from "@/components/admin/FolderBrowser";
+import { ReviewTaskDetail } from "@/components/admin/ReviewTaskDetail";
+import type { ReviewDecisionValues } from "@/components/admin/ReviewDecisionModal";
 import {
   getAuthMe,
   createDocument,
@@ -25,6 +27,7 @@ import {
   moveDocumentToFolder,
   moveFolder,
   newDocumentVersion,
+  completeDocumentReview,
   publishDocument,
   renameFolder,
   saveDocument,
@@ -94,8 +97,13 @@ export function DocAdminWorkspace() {
   const [viewerRole, setViewerRole] = useState<"owner" | "admin" | "member" | null>(null);
 
   const viewingDoc = Boolean(selectedId) && selectedNav === "knowledge";
+  const viewingReviewDoc = Boolean(selectedId) && selectedNav === "reviewTasks";
   const canManageMembers = viewerRole === "owner" || viewerRole === "admin";
   const canReviewTasks = canManageMembers;
+  const activeReviewTask = useMemo(
+    () => reviewTasks.find((item) => item.doc_id === selectedId) ?? null,
+    [reviewTasks, selectedId],
+  );
 
   const breadcrumb = useMemo(() => layer?.breadcrumb ?? [], [layer]);
   const knowledgeBases = useMemo(
@@ -206,6 +214,18 @@ export function DocAdminWorkspace() {
     }
     setSelectedId(id);
     setError(null);
+  }
+
+  async function handleOpenReviewDoc(id: string) {
+    setSelectedNav("reviewTasks");
+    setSelectedId(id);
+    setError(null);
+  }
+
+  function handleBackToReviewTasks() {
+    setSelectedId(null);
+    setSelectedNav("reviewTasks");
+    setDetail(null);
   }
 
   async function handleSelectFolder(id: string | null) {
@@ -525,6 +545,41 @@ export function DocAdminWorkspace() {
     }
   }
 
+  async function handleCompleteReview(values: ReviewDecisionValues) {
+    if (!selectedId) return;
+    const fromReviewTasks = selectedNav === "reviewTasks";
+    setBusy(true);
+    setError(null);
+    setWarning(null);
+    try {
+      const doc = await completeDocumentReview(selectedId, {
+        decision: values.decision,
+        review_comment: values.reviewComment || undefined,
+      });
+      setDetail(doc);
+      if (doc.warning) setWarning(doc.warning);
+      if (values.decision !== "approve") {
+        setIngestJob(null);
+      }
+      await refreshAll(currentFolderId);
+      if (fromReviewTasks) {
+        setReviewTasks(await listReviewTasks());
+        handleBackToReviewTasks();
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "审核失败");
+      try {
+        await loadDetail(selectedId);
+        await refreshAll(currentFolderId);
+      } catch {
+        /* keep error */
+      }
+      throw e;
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handlePublish() {
     if (!selectedId) return;
     setBusy(true);
@@ -538,6 +593,9 @@ export function DocAdminWorkspace() {
       setIngestJob(job);
       if (job?.warning) setWarning(job.warning);
       await refreshAll(currentFolderId);
+      if (selectedNav === "reviewTasks") {
+        setReviewTasks(await listReviewTasks());
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "发布失败");
       try {
@@ -551,11 +609,39 @@ export function DocAdminWorkspace() {
     }
   }
 
-  async function handleBulkPublish(items: { id: string; name: string }[]) {
+  async function handlePublishFromList(id: string, name: string) {
+    const confirmed = window.confirm(`确认发布「${name}」？\n\n发布后将写入知识库，供 AI 问答检索。`);
+    if (!confirmed) return;
+    setBusy(true);
+    setError(null);
+    setWarning(null);
+    try {
+      const doc = await publishDocument(id);
+      if (doc.warning) setWarning(doc.warning);
+      if (selectedId === id) {
+        setDetail(doc);
+        const job = await getIngestStatus(id);
+        setIngestJob(job);
+        if (job?.warning) setWarning(job.warning);
+      }
+      await refreshAll(currentFolderId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "发布失败");
+      try {
+        await refreshAll(currentFolderId);
+      } catch {
+        /* keep error */
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleBulkApprove(items: { id: string; name: string }[]) {
     if (items.length === 0) return;
     const names = items.map((item) => item.name).join("\n");
     const confirmed = window.confirm(
-      `确认批量审核通过并发布以下 ${items.length} 个文件？\n\n${names}`,
+      `确认批量审核通过以下 ${items.length} 个文件？\n通过后状态变为待发布。\n\n${names}`,
     );
     if (!confirmed) return;
 
@@ -564,13 +650,9 @@ export function DocAdminWorkspace() {
     setWarning(null);
     try {
       for (const item of items) {
-        await publishDocument(item.id);
+        await completeDocumentReview(item.id, { decision: "approve" });
       }
       setReviewTasks(await listReviewTasks());
-      if (selectedId && items.some((item) => item.id === selectedId)) {
-        const job = await getIngestStatus(selectedId);
-        setIngestJob(job);
-      }
       await refreshAll(currentFolderId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "批量审核失败");
@@ -696,28 +778,50 @@ export function DocAdminWorkspace() {
             <p className="kb-browser-empty">这里可以放首页概览内容。</p>
           </div>
         ) : selectedNav === "reviewTasks" ? (
-          <FolderBrowser
-            currentFolderId={null}
-            layer={null}
-            tree={tree}
-            busy={busy}
-            titleOverride="待审核任务"
-            subtitleOverride="所有提交给当前账号审核的文件"
-            documentsOverride={reviewTasks}
-            emptyTextOverride="暂无待审核文件"
-            searchPlaceholder="搜索文件名或上传人"
-            hideCreateActions
-            hideRowActions
-            selectionActionLabel="批量审核通过"
-            onSelectionAction={(items) => void handleBulkPublish(items)}
-            onCreateDoc={() => undefined}
-            onCreateFolder={() => undefined}
-            onOpenDoc={(id) => void handleSelectDoc(id)}
-            onRenameDoc={() => undefined}
-            onDownloadDoc={() => undefined}
-            onDeleteDoc={() => undefined}
-            onDeleteDocs={() => undefined}
-          />
+          viewingReviewDoc ? (
+            detail && detail.id === selectedId ? (
+              <ReviewTaskDetail
+                doc={detail}
+                uploader={activeReviewTask?.uploader}
+                reviewer={activeReviewTask?.reviewer}
+                reviewedAt={activeReviewTask?.reviewed_at}
+                reviewComment={activeReviewTask?.review_comment}
+                busy={busy}
+                onBack={handleBackToReviewTasks}
+                onCompleteReview={handleCompleteReview}
+              />
+            ) : (
+              <div className="chat-main doc-main kb-browser">
+                <button type="button" className="kb-crumb" onClick={handleBackToReviewTasks}>
+                  ← 返回待审核任务
+                </button>
+                <p className="kb-browser-empty">正在加载文件详情…</p>
+              </div>
+            )
+          ) : (
+            <FolderBrowser
+              currentFolderId={null}
+              layer={null}
+              tree={tree}
+              busy={busy}
+              titleOverride="待审核任务"
+              subtitleOverride="所有提交给当前账号审核的文件"
+              documentsOverride={reviewTasks}
+              emptyTextOverride="暂无待审核文件"
+              searchPlaceholder="搜索文件名或上传人"
+              hideCreateActions
+              hideRowActions
+              selectionActionLabel="批量审核通过"
+              onSelectionAction={(items) => void handleBulkApprove(items)}
+              onCreateDoc={() => undefined}
+              onCreateFolder={() => undefined}
+              onOpenDoc={(id) => void handleOpenReviewDoc(id)}
+              onRenameDoc={() => undefined}
+              onDownloadDoc={() => undefined}
+              onDeleteDoc={() => undefined}
+              onDeleteDocs={() => undefined}
+            />
+          )
         ) : selectedNav === "permissions" ? (
           <div className="chat-main doc-main kb-browser">
             <p className="kb-section-eyebrow">权限管理</p>
@@ -831,6 +935,7 @@ export function DocAdminWorkspace() {
             onDownloadDoc={(id, name) => void handleDownloadDocument(id, name)}
             onDeleteDoc={(id, name) => void handleDeleteDocument(id, name)}
             onDeleteDocs={(items) => void handleDeleteDocuments(items)}
+            onPublishDoc={(id, name) => void handlePublishFromList(id, name)}
           />
         )}
       </div>

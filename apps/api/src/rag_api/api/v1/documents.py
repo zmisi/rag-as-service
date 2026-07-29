@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Literal
 from urllib.parse import quote
 from uuid import UUID
 
@@ -22,6 +23,7 @@ from rag_api.api.schemas.documents import (
 )
 from rag_api.db.session import get_db
 from rag_api.services import document_service as doc_svc
+from rag_api.services.preview_service import build_preview
 from rag_api.services.storage_service import StorageService
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -37,6 +39,18 @@ class SubmitReviewRequest(BaseModel):
     reviewer_user_id: UUID | None = None
     review_comment: str | None = None
 
+
+class CompleteReviewRequest(BaseModel):
+    """Reviewer decision for a document in review status."""
+
+    decision: Literal["approve", "reject"]
+    review_comment: str | None = None
+
+
+class PublishReviewRequest(BaseModel):
+    """Optional reviewer comment when publishing."""
+
+    review_comment: str | None = None
 
 @router.post("", response_model=DocumentSummaryOut, status_code=status.HTTP_201_CREATED)
 def create_document(
@@ -154,6 +168,7 @@ def submit_for_review(
 @router.post("/{document_id}/publish", response_model=DocumentDetailOut)
 def publish_document(
     document_id: UUID,
+    body: PublishReviewRequest | None = None,
     db: Session = Depends(get_db),
     auth: AuthContext = Depends(require_tenant_member),
 ) -> DocumentDetailOut:
@@ -162,12 +177,40 @@ def publish_document(
         document_id=document_id,
         tenant_id=auth.tenant_id,
         reviewer_user_id=auth.user_id,
+        review_comment=body.review_comment if body else None,
     )
     return document_to_detail(
         result.document,
         warning_code=result.warning_code,
         warning=result.warning,
     )
+
+
+@router.post("/{document_id}/complete-review", response_model=DocumentDetailOut)
+def complete_review(
+    document_id: UUID,
+    body: CompleteReviewRequest,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(require_tenant_member),
+) -> DocumentDetailOut:
+    """Approve (pending publish) or reject (back to draft) a document under review."""
+    if body.decision == "approve":
+        doc = doc_svc.approve_document(
+            db,
+            document_id=document_id,
+            tenant_id=auth.tenant_id,
+            reviewer_user_id=auth.user_id,
+            review_comment=body.review_comment,
+        )
+        return document_to_detail(doc)
+    doc = doc_svc.reject_document(
+        db,
+        document_id=document_id,
+        tenant_id=auth.tenant_id,
+        reviewer_user_id=auth.user_id,
+        review_comment=body.review_comment,
+    )
+    return document_to_detail(doc)
 
 
 @router.post("/{document_id}/new-version", response_model=DocumentDetailOut)
@@ -229,6 +272,27 @@ def download_document(
         content=data,
         media_type=doc.file_content_type or "application/octet-stream",
         headers={"Content-Disposition": disposition},
+    )
+
+
+@router.get("/{document_id}/preview")
+def preview_document(
+    document_id: UUID,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(require_tenant_member),
+    storage: StorageService = Depends(_storage),
+) -> Response:
+    """Return a read-only preview (PDF stream, text, or Office HTML)."""
+    payload = build_preview(
+        db,
+        document_id=document_id,
+        tenant_id=auth.tenant_id,
+        storage=storage,
+    )
+    return Response(
+        content=payload.content,
+        media_type=payload.media_type,
+        headers={"Content-Disposition": payload.content_disposition},
     )
 
 

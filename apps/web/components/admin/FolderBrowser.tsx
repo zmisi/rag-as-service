@@ -30,6 +30,7 @@ type Props = {
   onDownloadDoc: (id: string, currentName: string) => void;
   onDeleteDoc: (id: string, currentName: string) => void;
   onDeleteDocs: (items: { id: string; name: string }[]) => void;
+  onPublishDoc?: (id: string, currentName: string) => void;
 };
 
 function formatDate(value: string | null) {
@@ -71,6 +72,17 @@ function IconDownload() {
   );
 }
 
+function IconPublish() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden>
+      <path
+        fill="currentColor"
+        d="M5 4v2h14V4H5zm0 10h4v6h6v-6h4l-7-7-7 7z"
+      />
+    </svg>
+  );
+}
+
 function IconDelete() {
   return (
     <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden>
@@ -80,6 +92,10 @@ function IconDelete() {
       />
     </svg>
   );
+}
+
+function canPublishDoc(d: FolderLayerDoc) {
+  return d.publish_status === "review" && Boolean(d.reviewed_at);
 }
 
 export function FolderBrowser({
@@ -104,6 +120,7 @@ export function FolderBrowser({
   onDownloadDoc,
   onDeleteDoc,
   onDeleteDocs,
+  onPublishDoc,
 }: Props) {
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -379,6 +396,18 @@ export function FolderBrowser({
                   {hideRowActions ? null : (
                     <td className="kb-col-actions">
                       <div className="kb-file-icon-actions">
+                        {canPublishDoc(d) && onPublishDoc ? (
+                          <button
+                            type="button"
+                            className="kb-icon-btn"
+                            title="发布"
+                            aria-label={`发布 ${name}`}
+                            disabled={busy}
+                            onClick={() => onPublishDoc(d.doc_id, name)}
+                          >
+                            <IconPublish />
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           className="kb-icon-btn"
