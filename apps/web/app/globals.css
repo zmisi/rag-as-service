@@ -1798,6 +1798,80 @@ a {
   font-size: 0.85rem;
 }
 
+.doc-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 0.85rem 1.25rem;
+  margin: 1.25rem 0 1.75rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--panel) 92%, var(--border));
+}
+
+.doc-meta-grid > div {
+  min-width: 0;
+}
+
+.doc-meta-grid dt {
+  margin: 0 0 0.2rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.doc-meta-grid dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.92rem;
+  word-break: break-word;
+}
+
+.doc-meta-span {
+  grid-column: 1 / -1;
+}
+
+.doc-preview-section {
+  margin-top: 0.5rem;
+}
+
+.doc-preview-heading {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.doc-preview-panel {
+  min-height: 28rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.doc-preview-frame {
+  display: block;
+  width: 100%;
+  height: min(70vh, 42rem);
+  border: 0;
+  background: #fff;
+}
+
+.doc-preview-text {
+  max-height: min(70vh, 42rem);
+  overflow: auto;
+}
+
+.doc-preview-pre {
+  margin: 0;
+  padding: 1rem 1.1rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--text);
+}
+
 .kb-file-search {
   width: 15rem;
   max-width: 100%;
@@ -1832,7 +1906,7 @@ a {
 }
 
 .kb-col-actions {
-  width: 6.5rem;
+  width: 8.5rem;
   white-space: nowrap;
 }
 

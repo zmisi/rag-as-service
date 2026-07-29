@@ -24,17 +24,27 @@ ALLOWED_VISIBILITY = frozenset(
 )
 
 
-def _doc_list_status(*, publish_status: str, ingest_status: str) -> str:
+def _doc_list_status(
+    *,
+    publish_status: str,
+    ingest_status: str,
+    reviewed_at: object | None = None,
+) -> str:
     """Map internal document states to admin list labels."""
     if publish_status == "draft":
         return "草稿"
     if publish_status == "review":
-        return "待审核"
-    if ingest_status in {"pending", "processing"}:
-        return "待解析"
-    if ingest_status == "ready":
-        return "完成"
-    return "待发布"
+        # reviewed_at set ⇒ reviewer approved; waiting for publish.
+        return "待发布" if reviewed_at is not None else "待审核"
+    if publish_status == "published":
+        if ingest_status in {"pending", "processing"}:
+            return "待解析"
+        if ingest_status == "ready":
+            return "完成"
+        if ingest_status == "failed":
+            return "解析失败"
+        return "已发布"
+    return publish_status
 
 
 def _repo(db: Session) -> FolderRepository:
@@ -374,6 +384,7 @@ def list_layer(
                 "status_label": _doc_list_status(
                     publish_status=d.publish_status,
                     ingest_status=d.ingest_status,
+                    reviewed_at=d.reviewed_at,
                 ),
                 "folder_id": str(d.folder_id) if d.folder_id else None,
                 "create_at": d.create_at.isoformat() if d.create_at else None,
@@ -407,6 +418,7 @@ def list_review_tasks(
                 Document.deleted_at.is_(None),
                 Document.publish_status == "review",
                 Document.reviewed_by == reviewer_user_id,
+                Document.reviewed_at.is_(None),
             )
             .order_by(Document.create_at.desc(), Document.doc_name.asc())
         )
@@ -430,6 +442,7 @@ def list_review_tasks(
             "status_label": _doc_list_status(
                 publish_status=d.publish_status,
                 ingest_status=d.ingest_status,
+                reviewed_at=d.reviewed_at,
             ),
             "folder_id": str(d.folder_id) if d.folder_id else None,
             "create_at": d.create_at.isoformat() if d.create_at else None,
