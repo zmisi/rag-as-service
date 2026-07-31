@@ -165,7 +165,7 @@ def test_f03_t07b_reject_legacy_doc_ppt_xls(client_a):
 
 def test_f03_t08_reject_oversized_file(client_a):
     doc_id = _create_doc(client_a)
-    big = b"%PDF-1.4 " + (b"x" * (20 * 1024 * 1024 + 1))
+    big = b"%PDF-1.4 " + (b"x" * (50 * 1024 * 1024 + 1))
     r = client_a.post(
         f"/v1/documents/{doc_id}/files",
         headers=HEADERS_A,

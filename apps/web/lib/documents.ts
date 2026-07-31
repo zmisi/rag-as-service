@@ -84,7 +84,7 @@ export const ALLOWED_EXTENSIONS = [
 
 export const LEGACY_EXTENSIONS = [".doc", ".ppt", ".xls"] as const;
 
-export const MAX_FILE_BYTES = 20 * 1024 * 1024;
+export const MAX_FILE_BYTES = 50 * 1024 * 1024;
 
 export const LEGACY_FILE_TYPE_MESSAGE =
   "不支持旧版 .doc / .ppt / .xls，请另存为 .docx / .pptx / .xlsx 后再上传";

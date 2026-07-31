@@ -16,8 +16,8 @@ from rag_api.config import Settings, get_settings
 from rag_api.db.models import ROLE_ADMIN, ROLE_OWNER, Tenant, TenantMember, User
 from rag_api.services.session_service import SessionService
 
-_HOST_SUBDOMAIN_RE = re.compile(
-    r"^(?P<subdomain>[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?)\.lxzxai\.com(?::\d+)?$",
+_TENANT_NAME_RE = re.compile(
+    r"^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$",
     re.IGNORECASE,
 )
 _PROXY_SECRET_HEADER = "X-Rag-Proxy-Secret"
@@ -39,15 +39,24 @@ def hostname_from_host_header(host_header: str) -> str:
     return host_header.split(":")[0].lower()
 
 
-def parse_subdomain(host: str | None) -> str | None:
-    """Extract tenant subdomain from ``*.lxzxai.com`` Host values, or return None."""
+def parse_subdomain(
+    host: str | None,
+    apex_host: str | None = None,
+) -> str | None:
+    """Extract a tenant name below the configured apex Host, or return None."""
     if not host:
         return None
-    host = host.split(",")[0].strip().lower()
-    match = _HOST_SUBDOMAIN_RE.match(host)
-    if not match:
+    hostname = hostname_from_host_header(host.split(",")[0].strip()).rstrip(".")
+    configured_apex = (
+        apex_host if apex_host is not None else get_settings().apex_host
+    ).lower().rstrip(".")
+    suffix = f".{configured_apex}"
+    if not hostname.endswith(suffix):
         return None
-    return match.group("subdomain").lower()
+    tenant_name = hostname[: -len(suffix)]
+    if not _TENANT_NAME_RE.fullmatch(tenant_name):
+        return None
+    return tenant_name.lower()
 
 
 def is_public_hostname(host_header: str, settings: Settings) -> bool:
@@ -55,7 +64,7 @@ def is_public_hostname(host_header: str, settings: Settings) -> bool:
     hostname = hostname_from_host_header(host_header.split(",")[0].strip())
     if hostname == settings.apex_host.lower():
         return True
-    return parse_subdomain(host_header) is not None
+    return parse_subdomain(host_header, settings.apex_host) is not None
 
 
 def _proxy_secret_ok(request: Request, settings: Settings) -> bool:
@@ -118,7 +127,7 @@ def require_known_host(
     hostname = hostname_from_host_header(host_header.split(",")[0].strip())
     if hostname == settings.apex_host.lower():
         return
-    if parse_subdomain(host_header) is not None:
+    if parse_subdomain(host_header, settings.apex_host) is not None:
         return
     raise HTTPException(status_code=404, detail="not found")
 
@@ -134,7 +143,7 @@ def get_current_tenant(
     from rag_api.db.models.tenant import TENANT_STATUS_ACTIVE
 
     raw_host = _raw_host(request, host, x_forwarded_host, settings)
-    subdomain = parse_subdomain(raw_host)
+    subdomain = parse_subdomain(raw_host, settings.apex_host)
     if subdomain is None:
         raise HTTPException(status_code=404, detail="Unknown host")
     tenant = db.scalar(select(Tenant).where(Tenant.tenant_name == subdomain))

@@ -14,7 +14,7 @@
 
 ## 范围
 
-- Admin（P1-F03 扩展）允许上传 / save：`.docx` / `.xlsx` / `.pptx`（单文件 ≤20MB）
+- Admin（P1-F03 扩展）允许上传 / save：`.docx` / `.xlsx` / `.pptx`（单文件 ≤50MB）
 - 索引（P1-F04 扩展）解析上述类型并进入 published 文档的 section/chunk 流程
 - **解析路由（轻量库，不用 Docling）**：
   - `.docx` → `python-docx`（`parse_route=docx`）
@@ -73,7 +73,7 @@ flowchart TD
       | `.docx` / `.pptx` / `.xlsx` | 文件头为 ZIP（`PK\x03\x04` 或等价 ZIP 签名）；且 ZIP 内分别存在 `word/`、`ppt/`、`xl/` 条目前缀（至少一类） |
       | `.txt` / `.md` | 无明显二进制特征（例如前 8KiB 不含 `\x00`）；按文本解码路径处理 |
    3. **扩展名与魔数不一致** → **4xx**（上传），不得存盘成功；**禁止**按魔数改判类型后改走其它解析器。
-4. 单文件大小上限仍为 **20MB**。
+4. 单文件大小上限仍为 **50MB**。
 
 ### 索引解析
 

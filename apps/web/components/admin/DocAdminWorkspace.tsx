@@ -690,7 +690,7 @@ export function DocAdminWorkspace() {
         throw new Error(`${fileTypeRejectMessage(file.name)}：${file.name}`);
       }
       if (file.size > MAX_FILE_BYTES) {
-        throw new Error(`文件超过 20MB：${file.name}`);
+        throw new Error(`文件超过 50MB：${file.name}`);
       }
       await uploadDocumentFile(selectedId, file);
       await loadDetail(selectedId, { preserveForm: true });

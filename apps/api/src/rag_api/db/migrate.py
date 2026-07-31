@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import re
-from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
@@ -13,10 +12,11 @@ from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, text
 
 from rag_api.config import get_settings
+from rag_api.runtime_paths import get_api_root
 
 logger = logging.getLogger(__name__)
 
-_API_ROOT = Path(__file__).resolve().parents[3]
+_API_ROOT = get_api_root()
 
 
 def _redact_url(url: str) -> str:

@@ -22,7 +22,7 @@ ALLOWED_EXTENSIONS = frozenset({".txt", ".md", ".pdf", ".docx", ".pptx", ".xlsx"
 
 LEGACY_EXTENSIONS = frozenset({".doc", ".ppt", ".xls"})
 
-MAX_FILE_BYTES = 20 * 1024 * 1024
+MAX_FILE_BYTES = 50 * 1024 * 1024
 
 UNSUPPORTED_FILE_TYPE_MESSAGE = (
     "Unsupported file type. Allowed: .txt, .md, .pdf, .docx, .pptx, .xlsx"

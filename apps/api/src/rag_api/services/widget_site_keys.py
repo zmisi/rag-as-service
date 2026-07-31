@@ -135,9 +135,15 @@ def revoke_site_key(
     return row
 
 
-def build_snippet(*, subdomain: str, public_key: str, scheme_host: str | None = None) -> str:
+def build_snippet(
+    *,
+    subdomain: str,
+    public_key: str,
+    apex_host: str,
+    scheme_host: str | None = None,
+) -> str:
     """Return HTML snippet with widget.js + data-site-key."""
-    base = scheme_host or f"https://{subdomain}.lxzxai.com"
+    base = scheme_host or f"https://{subdomain}.{apex_host}"
     return (
         f'<script src="{base}/widget.js"\n'
         f'        data-site-key="{public_key}"\n'

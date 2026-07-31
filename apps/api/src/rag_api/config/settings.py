@@ -5,17 +5,10 @@ from pathlib import Path
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-_API_ROOT = Path(__file__).resolve().parents[3]
+from rag_api.runtime_paths import get_api_root, get_repo_root
 
-
-def _resolve_repo_root(api_root: Path) -> Path:
-    """Monorepo: repo root is parent of ``apps/``. Docker: API root is ``/app``."""
-    if api_root.name == "api" and api_root.parent.name == "apps":
-        return api_root.parent.parent
-    return api_root
-
-
-_REPO_ROOT = _resolve_repo_root(_API_ROOT)
+_API_ROOT = get_api_root()
+_REPO_ROOT = get_repo_root(_API_ROOT)
 
 
 def _env_files() -> tuple[Path, ...] | None:

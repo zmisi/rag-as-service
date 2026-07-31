@@ -4,7 +4,11 @@ import { useEffect, useId, useRef, useState } from "react";
 
 import { SidebarPanelIcon } from "@/components/chat/SidebarPanelIcon";
 import { NewTaskIcon } from "@/components/chat/NewTaskIcon";
-import type { Conversation, ConversationStatus } from "@/lib/api";
+import {
+  resolveMainSiteUrl,
+  type Conversation,
+  type ConversationStatus,
+} from "@/lib/api";
 
 type Props = {
   conversations: Conversation[];
@@ -261,7 +265,7 @@ export function ConversationSidebar({
           <div className="sidebar-footer-row">
             <a
               className="sidebar-footer-link"
-              href="https://lxzxai.com/login"
+              href={resolveMainSiteUrl("/login")}
             >
               <svg
                 className="sidebar-footer-icon"

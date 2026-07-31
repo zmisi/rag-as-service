@@ -116,7 +116,7 @@ export function DocEditor({
               </button>
               <p className="doc-hint">
                 每版本仅一个文件；再选将覆盖。支持 .txt / .md / .pdf / .docx / .pptx /
-                .xlsx，≤ 20MB（不支持旧版 .doc / .ppt / .xls）
+                .xlsx，≤ 50MB（不支持旧版 .doc / .ppt / .xls）
               </p>
             </>
           ) : null}

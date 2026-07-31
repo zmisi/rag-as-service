@@ -1,11 +1,11 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { backendUrl, changePassword, resolveMainSiteUrl, resolvePostRegistrationUrl } from "@/lib/api";
 
-export default function ChangePasswordPage() {
+function ChangePasswordForm() {
   const searchParams = useSearchParams();
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -100,5 +100,13 @@ export default function ChangePasswordPage() {
         {submitting ? "提交中…" : "确认修改"}
       </button>
     </form>
+  );
+}
+
+export default function ChangePasswordPage() {
+  return (
+    <Suspense fallback={<p>正在加载…</p>}>
+      <ChangePasswordForm />
+    </Suspense>
   );
 }

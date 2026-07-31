@@ -280,7 +280,7 @@ erDiagram
 | `error_message` | `text` | NULL | 仅索引失败原因；成功为 NULL |
 | `file_name` | `text` | NULL | 原始文件名（未上传为空） |
 | `file_type` | `text` | NULL | 源类型（如扩展名 `pdf` / `docx`） |
-| `file_size_bytes` | `bigint` | NOT NULL DEFAULT 0 | 本版本源文件字节数（单文件；无文件为 `0`）；单文件 ≤20MB |
+| `file_size_bytes` | `bigint` | NOT NULL DEFAULT 0 | 本版本源文件字节数（单文件；无文件为 `0`）；单文件 ≤50MB |
 | `file_content_type` | `text` | NULL | MIME 类型（未上传为空） |
 | `file_content_sha256` | `text` | NULL | 本版本源内容哈希；同租户另一 `doc_group` 已有相同 hash 且 `published`+`ready` 时 publish **409**（知识库防重复）；**不**克隆索引 |
 | `file_modified_at` | `timestamp` | NULL | 可选源文件修改时间 |

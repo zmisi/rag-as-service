@@ -11,7 +11,7 @@ rag-as-service/
 ├── apps/
 │   ├── api/                 # FastAPI：HTTP、索引 worker、RAG Agent
 │   └── web/                 # Next.js App Router 前端
-├── deploy/                  # Caddy/nginx、compose（本地/生产同构）
+├── deploy/                  # Nginx、compose（本地/生产同构）
 ├── scripts/                 # 运维与本地辅助（不进业务运行时热路径）
 ├── docs/
 │   ├── architecture.md      # 本文件
@@ -31,7 +31,7 @@ rag-as-service/
 浏览器
   │  Host: lxzxai.com | {subdomain}.lxzxai.com
   ▼
-Caddy（可选）或 Next BFF
+Nginx（可选）或 Next BFF
   ├─ /*           → apps/web
   └─ /backend/*   → apps/api   （同源；服务端注入 X-Forwarded-Host + X-Rag-Proxy-Secret）
 ```
@@ -126,7 +126,7 @@ apps/web/
 ├── components/
 ├── lib/                     # 仅调用同源 /backend/*
 ├── e2e/                     # Playwright，对齐 Spec e2e 用例
-└── next.config.ts           # rewrites：/backend → api（本地可无独立 Caddy）
+└── next.config.ts           # rewrites：/backend → api（本地可无独立 Nginx）
 ```
 
 - 租户身份以 Host + cookie 为准，不以客户端「猜 subdomain」为权威。

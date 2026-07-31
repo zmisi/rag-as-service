@@ -1,13 +1,16 @@
 import type { DocDetail, DocSummary, IngestJobStatus } from "./documents";
 
 const API_PREFIX = "/backend";
+const PUBLIC_APEX_HOST =
+  process.env.NEXT_PUBLIC_APEX_HOST?.trim().toLowerCase().replace(/\.$/, "") ||
+  "lxzxai.com";
 
 export function backendUrl(path: string): string {
   const normalized = path.startsWith("/") ? path : `/${path}`;
   return `${API_PREFIX}${normalized}`;
 }
 
-/** Rewrite API redirect URLs for local dev (http + :3000). Production keeps https. */
+/** Adapt tenant redirects to the configured local HTTP/port entrypoint. */
 export function resolvePostRegistrationUrl(redirectUrl: string): string {
   if (typeof window === "undefined") {
     return redirectUrl;
@@ -22,8 +25,12 @@ export function resolvePostRegistrationUrl(redirectUrl: string): string {
 
   const { protocol, hostname, port } = window.location;
   const onLocalApex =
-    hostname === "lxzxai.com" || hostname.endsWith(".lxzxai.com");
+    hostname === PUBLIC_APEX_HOST ||
+    hostname.endsWith(`.${PUBLIC_APEX_HOST}`);
 
+  if (onLocalApex && protocol === "http:") {
+    target.protocol = protocol;
+  }
   if (onLocalApex && port && port !== "443" && port !== "80") {
     target.protocol = protocol;
     target.port = port;
@@ -32,15 +39,15 @@ export function resolvePostRegistrationUrl(redirectUrl: string): string {
   return target.toString();
 }
 
-/** Build main-site URL with local dev port when on *.lxzxai.com. */
+/** Build the configured main-site URL, preserving the local development port. */
 export function resolveMainSiteUrl(path: string): string {
   const normalized = path.startsWith("/") ? path : `/${path}`;
   if (typeof window === "undefined") {
-    return `https://lxzxai.com${normalized}`;
+    return `https://${PUBLIC_APEX_HOST}${normalized}`;
   }
 
   const { protocol, port } = window.location;
-  let base = `${protocol}//lxzxai.com`;
+  let base = `${protocol}//${PUBLIC_APEX_HOST}`;
   if (port && port !== "443" && port !== "80") {
     base += `:${port}`;
   }

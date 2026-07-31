@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from pathlib import Path
 
-_PROMPTS_ROOT = Path(__file__).resolve().parents[3] / "prompts"
+from rag_api.runtime_paths import get_api_root
+
+_PROMPTS_ROOT = get_api_root() / "prompts"
 
 
 @lru_cache

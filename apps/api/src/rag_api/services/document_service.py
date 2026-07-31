@@ -153,7 +153,7 @@ def add_file(
 ) -> Document:
     """Attach or replace the single source file on this document version."""
     if len(data) > MAX_FILE_BYTES:
-        raise HTTPException(status_code=400, detail="File exceeds 20MB limit")
+        raise HTTPException(status_code=400, detail="File exceeds 50MB limit")
     try:
         validate_file_type(filename, data)
     except FileTypeError as exc:

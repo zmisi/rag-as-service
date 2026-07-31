@@ -233,7 +233,7 @@ export function AddFilesModal({
         continue;
       }
       if (file.size > MAX_FILE_BYTES) {
-        rejected.push(`${name}（超过 20MB）`);
+        rejected.push(`${name}（超过 50MB）`);
         continue;
       }
       accepted.push(file);
@@ -465,8 +465,8 @@ export function AddFilesModal({
               </p>
               <p className="kb-dropzone-hint">
                 {uploadMode === "folder"
-                  ? "支持选择或拖入整个文件夹；仅上传允许类型，单个文件 ≤ 20MB。禁止上传违规文件。"
-                  : "支持单文件或多文件；类型 .txt / .md / .pdf / .docx / .pptx / .xlsx，单个 ≤ 20MB。禁止上传违规文件。"}
+                  ? "支持选择或拖入整个文件夹；仅上传允许类型，单个文件 ≤ 50MB。禁止上传违规文件。"
+                  : "支持单文件或多文件；类型 .txt / .md / .pdf / .docx / .pptx / .xlsx，单个 ≤ 50MB。禁止上传违规文件。"}
               </p>
             </div>
 

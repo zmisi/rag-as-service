@@ -14,6 +14,7 @@ from rag_api.api.schemas.widget import (
     WidgetSiteKeyUpdate,
     WidgetSnippetOut,
 )
+from rag_api.config import Settings, get_settings
 from rag_api.services import widget_site_keys as site_key_svc
 
 router = APIRouter(prefix="/admin/widget-site-keys", tags=["widget-admin"])
@@ -79,6 +80,7 @@ def get_widget_snippet(
     request: Request,
     db: Session = Depends(get_db),
     auth: AuthContext = Depends(require_tenant_member),
+    settings: Settings = Depends(get_settings),
 ) -> WidgetSnippetOut:
     row = site_key_svc.get_site_key_for_tenant(
         db, tenant_id=auth.tenant_id, site_key_id=site_key_id
@@ -90,6 +92,7 @@ def get_widget_snippet(
     snippet = site_key_svc.build_snippet(
         subdomain=auth.subdomain,
         public_key=row.public_key,
+        apex_host=settings.apex_host,
         scheme_host=scheme_host,
     )
     return WidgetSnippetOut(snippet=snippet, public_key=row.public_key)

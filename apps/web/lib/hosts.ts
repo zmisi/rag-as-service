@@ -1,9 +1,17 @@
-/** Host parsing for lxzxai.com multi-tenant routing (web). */
+/** Host parsing for configurable multi-tenant routing (web). */
 
-export const APEX_HOST = "lxzxai.com";
+const DEFAULT_APEX_HOST = "lxzxai.com";
 
-export const TENANT_HOST_RE =
-  /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?\.lxzxai\.com$/i;
+export const APEX_HOST =
+  process.env.APEX_HOST?.trim().toLowerCase().replace(/\.$/, "") ||
+  DEFAULT_APEX_HOST;
+
+const escapedApexHost = APEX_HOST.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+export const TENANT_HOST_RE = new RegExp(
+  `^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?\\.${escapedApexHost}$`,
+  "i",
+);
 
 export function hostnameFromHostHeader(hostHeader: string): string {
   return hostHeader.split(":")[0].toLowerCase();

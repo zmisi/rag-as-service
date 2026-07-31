@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from rag_api.db.models import Tenant, TenantMember, User
+from rag_api.db.models import ROLE_OWNER, Tenant, TenantMember, User
 from rag_api.repositories.tenant_member_repository import TenantMemberRepository
 from rag_api.repositories.tenant_repository import TenantRepository
 from rag_api.repositories.user_repository import UserRepository
@@ -43,5 +43,6 @@ class RegistrationRepository:
             tenant_id=tenant.tenant_id,
             user_id=user.user_id,
             member_name=user.user_name,
+            role=ROLE_OWNER,
         )
         return RegistrationResult(user=user, tenant=tenant, member=member)

@@ -17,7 +17,7 @@
 - `/admin` 页面布局与双栏工作台
 - 文档列表（Tag 过滤、搜索、新建）
 - 文档 Editor（状态机 Stepper、Save / Submit for Review / Publish）
-- 文件上传前端校验（类型、20MB）
+- 文件上传前端校验（类型、50MB）
 - 发布后索引状态只读反馈（P1-F04 数据，不做解析 UI）
 
 ## 非范围
@@ -33,7 +33,7 @@
 - 状态机必须在 UI 显式体现，禁止跳步：`draft → review → published`
 - Tag 受控枚举：`news` | `sop` | `best_practice` | `knowledge_base` | `faq`
 - 版本：首次 publish = `1.0`；再编辑 publish 递增 minor +0.1（如 1.0 → 1.1）
-- 文件：`.txt` / `.md` / `.pdf`；单文件 ≤ 20MB（Office OOXML 见 Phase 2 P1-F08；不支持旧版 `.doc` / `.ppt`）
+- 文件：`.txt` / `.md` / `.pdf`；单文件 ≤ 50MB（Office OOXML 见 Phase 2 P1-F08；不支持旧版 `.doc` / `.ppt`）
 - 风格：复用聊天页双栏模式（`apps/web/components/chat/ChatWorkspace.tsx`）
 
 ## 页面布局
@@ -332,7 +332,7 @@ UI 必须用 Stepper 显式展示三步，且 **禁止跳步**（对应 P1-F03-T
 | 规则 | UI 行为 |
 |------|---------|
 | 允许扩展名 | `.txt` `.md` `.pdf`（Office OOXML 见 P1-F08） |
-| 单文件 ≤ 20MB | 超限拒绝并提示（P1-F03-T08） |
+| 单文件 ≤ 50MB | 超限拒绝并提示（P1-F03-T08） |
 | 不支持类型（如 `.exe`） | 拒绝并提示（P1-F03-T07） |
 | Office / 旧版 | Phase 1 拒绝 `.doc` / `.ppt` / `.docx` / `.pptx` / `.xlsx`（P1-F03-T07b）；P1-F08 启用 OOXML |
 | 上传列表 | 每行：filename、content_type、size、校验状态（valid/rejected） |
@@ -424,7 +424,7 @@ type IngestJobStatus = {
 | P1-F03-T05 | Publish 后 Stepper 到 Published，version 显示 1.0，索引区出现 pending/running |
 | P1-F03-T06 | Tag 下拉无非法项；若 API 4xx 则 alert |
 | P1-F03-T07 | 选 .exe 前端拒绝 |
-| P1-F03-T08 | 选 >20MB 前端拒绝 |
+| P1-F03-T08 | 选 >50MB 前端拒绝 |
 | P1-F03-T09 | API 层（UI 无跨租户入口） |
 | P1-F03-T10 | 「编辑新版本」后 version 递增可见 |
 | P1-F03-T11 | Tag tab 切换后列表仅显示对应 tag |

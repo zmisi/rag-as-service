@@ -2,6 +2,32 @@
 
 Phase 1 注册/登录在主站 `lxzxai.com`；租户站在 `{subdomain}.lxzxai.com`。
 
+## 自定义本地主域名
+
+主域名由 `APEX_HOST` 配置。以 `lxzai.dev.com` 为例，在仓库根目录 `.env` 设置：
+
+```dotenv
+APEX_HOST=lxzai.dev.com
+SESSION_COOKIE_DOMAIN=.lxzai.dev.com
+COOKIE_SECURE=false
+```
+
+Compose 会把 `APEX_HOST` 同步传给 API、Web 服务端和浏览器端代码。compose 文件在 `deploy/` 下时，默认**不会**用仓库根 `.env` 做 `${APEX_HOST}` 插值（会回落到 `lxzxai.com` 并覆盖 `env_file`），因此 recreate 时必须显式带上 `--env-file`：
+
+```bash
+docker compose -f deploy/docker-compose.yml --env-file .env up -d --build --force-recreate api web
+```
+
+原生启动 Web 时还需同时设置浏览器端变量：
+
+```bash
+APEX_HOST=lxzai.dev.com \
+NEXT_PUBLIC_APEX_HOST=lxzai.dev.com \
+npm run dev
+```
+
+以下 DNS 示例中的 `lxzxai.com` 可同样替换为自定义主域名。
+
 ## /etc/hosts（示例）
 
 ```text
@@ -40,14 +66,10 @@ echo "nameserver 127.0.0.1" | sudo tee /etc/resolver/lxzxai.com
 cp deploy/.env.example .env
 docker compose -f deploy/docker-compose.yml up --build
 
-# 如果需要重建API镜像，可以运行下面命令
-docker compose -f deploy/docker-compose.yml build \
-  --build-arg INSTALL_DOCLING=1 \
-  --build-arg PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
-  --build-arg PIP_TRUSTED_HOST=pypi.tuna.tsinghua.edu.cn \
-  api ingest-worker 
+# 如果需要重建 API 镜像（含 Docling），可以运行下面命令
+docker compose -f deploy/docker-compose.yml build api
 
-docker compose -f deploy/docker-compose.yml up -d --force-recreate api web ingest-worker 
+docker compose -f deploy/docker-compose.yml up -d --force-recreate api web ingest-worker
 
 # 查看详细日志
 # 只看 API（索引 / parse_route / 报错最常用）
@@ -67,6 +89,7 @@ docker compose -f deploy/docker-compose.yml logs -f
 |------|------|------|
 | `db` | PostgreSQL 16 + pgvector | 5432 |
 | `api` | FastAPI；`AUTO_MIGRATE=true` 自动迁移 | 8000 |
+| `ingest-worker` | 使用与 `api` 相同的 `rag-as-service-backend:latest` 镜像，执行异步索引任务 | 无 |
 | `web` | Next.js；`/backend/*` → `api:8000` | 3000 |
 
 访问：
@@ -115,10 +138,10 @@ curl -X POST 'http://127.0.0.1:8000/v1/documents/ingest/run-pending' \
   -b 'pb_session=eBFP3lHKDLheVtMOyPglWJUL36vNXJQhPXy17ktgkNw'
 ```
 
-可选边缘入口（Caddy，可信 Host / XFH）：
+可选边缘入口（Nginx，可信 Host / XFH）：
 
 ```bash
-docker compose -f deploy/docker-compose.yml --profile caddy up -d
+docker compose -f deploy/docker-compose.yml --profile nginx up -d
 # 访问 http://lxzxai.com:8080 （/backend → api，其余 → web）
 ```
 
@@ -153,19 +176,18 @@ cd apps/web && \
 
 访问：http://lxzxai.com:3000/login 或 `/register`（`localhost` 仅可看 UI；鉴权走 `/backend` BFF，由服务端注入 `X-Forwarded-Host`）。
 
-**Docker 含 PDF/Office 解析**（安装 CPU 版 torch，避免拉 CUDA 大包超时）：
+**Docker 含 PDF/Office 解析**（镜像默认安装 Docling + CPU 版 torch，避免拉 CUDA 大包超时）：
 
 ```bash
-# 建议：.env 里保留清华源（deploy/.env.example 已写）；需要 Docling 时：
-INSTALL_DOCLING=1 docker compose -f deploy/docker-compose.yml build api
+# 默认使用官方 PyPI，避免镜像未同步 hatchling 等构建依赖
+docker compose -f deploy/docker-compose.yml build api
 docker compose -f deploy/docker-compose.yml up
 ```
 
-或一次性：
+确认内部镜像完整同步依赖后，也可一次性指定：
 
 ```bash
 docker compose -f deploy/docker-compose.yml build \
-  --build-arg INSTALL_DOCLING=1 \
   --build-arg PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
   --build-arg PIP_TRUSTED_HOST=pypi.tuna.tsinghua.edu.cn \
   api
@@ -173,10 +195,9 @@ docker compose -f deploy/docker-compose.yml build \
 
 构建易失败（超时 / hash mismatch）时：
 
-1. 确认用了国内 PyPI 镜像（默认清华）；不要用 `--extra-index-url` 混源装 Docling
+1. 若镜像返回 `No matching distribution found`，改回官方 PyPI；不要用 `--extra-index-url` 混源安装
 2. 清掉坏缓存后重试：`docker builder prune -f` 再 `build --no-cache api`
-3. 仅文字层 PDF 可先 `INSTALL_DOCLING=0`（PyMuPDF 足够），少下一大包
-4. 若索引报 `libxcb.so.1: cannot open shared object file`：确认用的是含系统库的新 Dockerfile 后 **重建 api 镜像**（`INSTALL_DOCLING=1 ... build api`）
+3. 若索引报 `libxcb.so.1: cannot open shared object file`：确认用的是含系统库的新 Dockerfile 后 **重建 api 镜像**
 
 说明：
 
@@ -185,7 +206,7 @@ docker compose -f deploy/docker-compose.yml build \
 - 首次走 Docling（结构化 PDF）时会从 Hugging Face 拉模型，发布/摄入可能较慢；模型缓存后会明显加快
 - 若报 `cannot find the appropriate snapshot folder` / SSL EOF：是 **HF 模型下载失败**（非 PDF 损坏）。先确认容器能访问 `https://huggingface.co`；直连差再试 `HF_ENDPOINT=https://hf-mirror.com`。若变成 `Connection refused` 且 `dig hf-mirror.com` → `0.0.0.0`：本机把镜像域名黑洞了，**删掉** `HF_ENDPOINT` 后 recreate，走官方 Hub。Compose 卷 `hf_cache` 持久化模型
 - `INGEST_SYNC_ON_PUBLISH=true` 时发布会同步跑完索引（本地捷径）；Compose 默认 `false`，由 `ingest-worker`（`rag-ingest-worker`）轮询消费 `ingest_job`（`FOR UPDATE SKIP LOCKED` + stuck reclaim）
-- 浏览器**不要**自带 `X-Forwarded-Host`；由 Next `/backend` BFF 或 Caddy 注入，并带 `X-Rag-Proxy-Secret`
+- 浏览器**不要**自带 `X-Forwarded-Host`；由 Next `/backend` BFF 或 Nginx 注入，并带 `X-Rag-Proxy-Secret`
 
 E2E：`E2E_ENABLED=1` + `DATABASE_URL` 后 `cd apps/web && npm run test:e2e`。
 
@@ -200,7 +221,7 @@ E2E：`E2E_ENABLED=1` + `DATABASE_URL` 后 `cd apps/web && npm run test:e2e`。
 | `.docx` / `.pptx` / `.xlsx` | 轻量库 → 内存 Markdown；ZIP + `word/`/`ppt/`/`xl/` 魔数；`parse_route=docx\|pptx\|xlsx` |
 | 切块 | H1–H6 节树 + 节内 leaf（`CHUNK_TARGET_TOKENS` / `CHUNK_OVERLAP_TOKENS`） |
 | Embedding | 默认 `HashingEmbedder`（本地无 DashScope）；生产可设 `QWEN_EMBEDDING_ENABLED=true`；审计字段写在 **documents** |
-| PDF 路由 | **有骨架**（书签 TOC / 字号标题候选，或 `PDF_FORCE_STRUCTURE=true`）→ Docling 结构路径；**无骨架纯文字** → PyMuPDF；结构 PDF 需 `INSTALL_DOCLING=1` |
+| PDF 路由 | **有骨架**（书签 TOC / 字号标题候选，或 `PDF_FORCE_STRUCTURE=true`）→ Docling 结构路径；**无骨架纯文字** → PyMuPDF；Docker 镜像默认已含 Docling |
 | 源文件持久化 | Compose 卷 `api_storage` → `/app/var/storage` |
 | 同租户防重复 | 另一 `doc_group` 已有相同 `file_content_sha256` 且 `published`+`ready` → publish **409**（含已有文档 id/title）；不克隆索引 |
 

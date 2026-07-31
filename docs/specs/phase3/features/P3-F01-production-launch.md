@@ -4,10 +4,10 @@
 
 | 字段 | 值 |
 |------|-----|
-| **Status** | `draft` |
-| **Owner** | |
-| **Approved by** | |
-| **Approved at** | |
+| **Status** | `approved` |
+| **Owner** | fanghouhong |
+| **Approved by** | fanghouhong |
+| **Approved at** | 2026-07-29 |
 
 > ID：`P3-F01`。未 `approved` 不得实现，见 [00-constraints.mdc](../../../../.cursor/rules/00-constraints.mdc) §8。
 
@@ -50,6 +50,8 @@ flowchart TD
 3. 主 Flow 每步须有可保存证据（截图、e2e 报告或 runbook 勾选记录）。
 4. 证书到期前须有续期说明（runbook 一节即可）。
 5. 本地 `/etc/hosts` 模拟**不算**本 Feature 生产验收通过。
+6. 主域名由 `APEX_HOST` 配置；API 与 Web 必须据此识别主站及 `{tenant_name}.{APEX_HOST}`，默认值仍为 `lxzxai.com`。
+7. 集成镜像上传脚本从未提交的 `scripts/integration_env.conf` 读取服务器与密码；真实密码不得写入脚本、示例配置或 Git。
 
 ## 数据与边界
 
@@ -67,4 +69,5 @@ flowchart TD
 | P3-F01-T03 | Given 成员 When admin 上传 txt/pdf 并 publish | Then 摄入 `ready`；Portal 可问到独特短语或明确无命中话术 | e2e |
 | P3-F01-T04 | Given 未知子域 Host When 访问 | Then 404 | e2e |
 | P3-F01-T05 | Given 已配置 API Key 或 Widget When 冒烟调用 | Then 至少一条 200 成功路径（或显式跳过并记录「未配置」） | e2e |
-| P3-F01-T06 | Given 部署文档 When 审查 | Then 含回滚步骤与日志位置；无密钥入库 | unit |
+| P3-F01-T06 | Given 部署文档与上传脚本 When 审查 | Then 含回滚步骤与日志位置；上传脚本从被忽略的配置读取服务器与密码；无密钥入库 | unit |
+| P3-F01-T07 | Given `APEX_HOST=lxzai.dev.com` When 解析主站和租户 Host | Then 接受 `lxzai.dev.com` 与 `{tenant}.lxzai.dev.com`，不再接受其他主域名下的租户 Host | unit |

@@ -1,0 +1,123 @@
+name: rag-as-service-integration
+
+services:
+  db:
+    image: rag-as-service-db:${IMAGE_TAG:?IMAGE_TAG is required}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    image: rag-as-service-backend:${IMAGE_TAG:?IMAGE_TAG is required}
+    restart: unless-stopped
+    env_file:
+      - path: ${INTEGRATION_ENV_FILE:-./.env.integration}
+        required: true
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      AUTO_MIGRATE: "true"
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      INGEST_SYNC_ON_PUBLISH: "false"
+      HF_HOME: /app/var/hf-cache
+      STORAGE_ROOT: /app/var/storage
+    volumes:
+      - api_storage:/app/var/storage
+      - hf_cache:/app/var/hf-cache
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=5).read()",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  ingest-worker:
+    image: rag-as-service-backend:${IMAGE_TAG:?IMAGE_TAG is required}
+    restart: unless-stopped
+    command: rag-ingest-worker
+    env_file:
+      - path: ${INTEGRATION_ENV_FILE:-./.env.integration}
+        required: true
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      AUTO_MIGRATE: "false"
+      INGEST_SYNC_ON_PUBLISH: "false"
+      HF_HOME: /app/var/hf-cache
+      STORAGE_ROOT: /app/var/storage
+    volumes:
+      - api_storage:/app/var/storage
+      - hf_cache:/app/var/hf-cache
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+
+  web:
+    image: rag-as-service-web:${IMAGE_TAG:?IMAGE_TAG is required}
+    restart: unless-stopped
+    env_file:
+      - path: ${INTEGRATION_ENV_FILE:-./.env.integration}
+        required: true
+    environment:
+      API_BACKEND_URL: http://api:8000
+      PORT: 3000
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--spider",
+          "http://127.0.0.1:3000/login",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  nginx:
+    image: nginx:1.28-alpine
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:8080"
+    environment:
+      PROXY_SHARED_SECRET: ${PROXY_SHARED_SECRET:?PROXY_SHARED_SECRET is required}
+      NGINX_ENVSUBST_FILTER: PROXY_SHARED_SECRET
+    volumes:
+      - ./nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  api_storage:
+  hf_cache:

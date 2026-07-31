@@ -2,6 +2,8 @@
 .env
 .env.local
 .env.*.local
+deploy/.env.integration
+scripts/integration_env.conf
 
 # Python
 __pycache__/
@@ -14,6 +16,7 @@ venv/
 .ruff_cache/
 htmlcov/
 .coverage
+dist/
 
 # Node
 node_modules/
